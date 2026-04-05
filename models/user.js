@@ -1,5 +1,6 @@
 /* ============================================================
    TwatChat — models/user.js
+   bcryptjs v3 compatible — no next() in async hooks
    ============================================================ */
 
 'use strict';
@@ -46,7 +47,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password is required'],
       minlength: [6, 'Password must be at least 6 characters'],
-      select: false, // never returned in queries by default
+      select: false,
     },
 
     avatarClass: {
@@ -55,7 +56,7 @@ const userSchema = new mongoose.Schema(
     },
 
     avatarUrl: {
-      type: String,     // Cloudinary URL if user uploads a photo
+      type: String,
       default: '',
     },
 
@@ -64,7 +65,6 @@ const userSchema = new mongoose.Schema(
       default: 'U',
     },
 
-    // ── Online presence ──────────────────────────────────
     isOnline: {
       type: Boolean,
       default: false,
@@ -80,48 +80,46 @@ const userSchema = new mongoose.Schema(
       default: '',
     },
 
-    // ── Privacy settings ─────────────────────────────────
     settings: {
-      notifications:  { type: Boolean, default: true  },
-      onlineStatus:   { type: Boolean, default: true  },
-      searchable:     { type: Boolean, default: true  },
-      hiddenMode:     { type: Boolean, default: false },
+      notifications: { type: Boolean, default: true  },
+      onlineStatus:  { type: Boolean, default: true  },
+      searchable:    { type: Boolean, default: true  },
+      hiddenMode:    { type: Boolean, default: false },
     },
   },
   {
-    timestamps: true, // createdAt + updatedAt
+    timestamps: true,
   }
 );
 
-// ── Hash password before saving ────────────────────────────
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
-});
-
-// ── Compare password (used in login) ──────────────────────
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
-};
-
-// ── Auto-set initials + displayName before saving ─────────
-userSchema.pre('save', function (next) {
+// ── Pre-save hook — bcryptjs v3 compatible (no next) ───────
+userSchema.pre('save', async function () {
+  // ── Auto-set displayName ─────────────────────────────────
   const f = (this.firstName || '').trim();
   const l = (this.lastName  || '').trim();
 
   if (!this.displayName) {
-    this.displayName = f && l ? `${f} ${l}` : f || this.email.split('@')[0];
+    this.displayName = f && l
+      ? `${f} ${l}`
+      : f || this.email.split('@')[0];
   }
 
+  // ── Auto-set initials ────────────────────────────────────
   if (!this.initials || this.initials === 'U') {
-    if (f && l) this.initials = (f[0] + l[0]).toUpperCase();
+    if (f && l)  this.initials = (f[0] + l[0]).toUpperCase();
     else if (f)  this.initials = f.slice(0, 2).toUpperCase();
     else         this.initials = 'U';
   }
 
-  next();
+  // ── Hash password only if modified ──────────────────────
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
 });
+
+// ── Compare password ─────────────────────────────────────
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
 
 module.exports = mongoose.model('User', userSchema);
