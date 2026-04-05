@@ -5,6 +5,20 @@
 
 'use strict';
 
+const crypto = require('crypto');
+
+// ── Generate unique user code e.g. "TC-4829-XK" ───────────
+const generateUserCode = () => {
+  const digits  = Math.floor(1000 + Math.random() * 9000); // 4 digits
+  const letters = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 2); // 2 letters
+  return `TC-${digits}-${letters}`;
+};
+
+// ── Generate chatroom invite code e.g. "inv_a3f8c2d1e4" ───
+const generateInviteCode = () => {
+  return 'inv_' + crypto.randomBytes(6).toString('hex');
+};
+
 // ── Generate initials from name ────────────────────────────
 const getInitials = (firstName = '', lastName = '') => {
   const f = firstName.trim();
@@ -34,15 +48,14 @@ const sanitise = (str = '') => {
 };
 
 // ── Paginate a Mongoose query ──────────────────────────────
-// Usage: const { skip, limit, page } = paginate(req.query)
 const paginate = (query = {}) => {
   const page  = Math.max(parseInt(query.page)  || 1, 1);
-  const limit = Math.min(parseInt(query.limit) || 40, 100); // cap at 100
+  const limit = Math.min(parseInt(query.limit) || 40, 100);
   const skip  = (page - 1) * limit;
   return { page, limit, skip };
 };
 
-// ── Build pagination meta for responses ───────────────────
+// ── Build pagination meta ──────────────────────────────────
 const paginationMeta = (total, page, limit) => ({
   total,
   page,
@@ -51,8 +64,7 @@ const paginationMeta = (total, page, limit) => ({
   hasMore: page * limit < total,
 });
 
-// ── Pick only allowed keys from an object ─────────────────
-// Prevents mass-assignment vulnerabilities
+// ── Pick only allowed keys ─────────────────────────────────
 const pick = (obj = {}, keys = []) => {
   return keys.reduce((acc, key) => {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -62,21 +74,19 @@ const pick = (obj = {}, keys = []) => {
   }, {});
 };
 
-// ── Check if a string is a valid MongoDB ObjectId ─────────
+// ── Check valid MongoDB ObjectId ──────────────────────────
 const isValidObjectId = (id) => {
   return /^[a-f\d]{24}$/i.test(id);
 };
 
-// ── Format lastSeen into a readable string ─────────────────
+// ── Format lastSeen ────────────────────────────────────────
 const formatLastSeen = (date) => {
   if (!date) return 'a while ago';
-
   const now     = Date.now();
   const diff    = now - new Date(date).getTime();
   const minutes = Math.floor(diff / 60000);
   const hours   = Math.floor(diff / 3600000);
   const days    = Math.floor(diff / 86400000);
-
   if (minutes < 1)  return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours   < 24) return `${hours}h ago`;
@@ -85,6 +95,8 @@ const formatLastSeen = (date) => {
 };
 
 module.exports = {
+  generateUserCode,
+  generateInviteCode,
   getInitials,
   getDisplayName,
   sanitise,

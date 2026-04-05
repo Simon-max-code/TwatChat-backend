@@ -1,17 +1,15 @@
 /* ============================================================
    TwatChat — controllers/userCtrl.js
-   getUsers | getUser | updateProfile | deleteAccount
+   getUsers | getUser | findByCode | updateProfile | deleteAccount
    ============================================================ */
 
 'use strict';
 
-const User = require('../models/user');
-const Chat = require('../models/chat');
+const User    = require('../models/user');
+const Chat    = require('../models/chat');
 const Message = require('../models/message');
 
 // ── @GET /api/users  (protected) ──────────────────────────
-// Returns all users except the logged-in user
-// Supports ?search= query for sidebar search
 const getUsers = async (req, res, next) => {
   try {
     const search = req.query.search
@@ -25,10 +23,35 @@ const getUsers = async (req, res, next) => {
 
     const users = await User.find({
       ...search,
-      _id: { $ne: req.user._id }, // exclude self
-    }).select('_id firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen');
+      _id: { $ne: req.user._id },
+    }).select('_id firstName lastName displayName avatarClass avatarUrl initials isOnline lastSeen userCode');
 
     res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── @GET /api/users/find/:code  (protected) ───────────────
+// Find a user by their unique TC-XXXX-XX code
+// Returns limited profile — NO email exposed
+const findByCode = async (req, res, next) => {
+  try {
+    const code = req.params.code.trim().toUpperCase();
+
+    const user = await User.findOne({ userCode: code })
+      .select('_id displayName firstName lastName avatarClass avatarUrl initials isOnline userCode');
+
+    if (!user) {
+      return res.status(404).json({ message: 'No user found with that code' });
+    }
+
+    // Don't return yourself
+    if (String(user._id) === String(req.user._id)) {
+      return res.status(400).json({ message: 'That\'s your own code!' });
+    }
+
+    res.json({ user });
   } catch (err) {
     next(err);
   }
@@ -38,11 +61,9 @@ const getUsers = async (req, res, next) => {
 const getUser = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id)
-      .select('_id firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen');
+      .select('_id firstName lastName displayName avatarClass avatarUrl initials isOnline lastSeen userCode');
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     res.json({ user });
   } catch (err) {
@@ -58,14 +79,12 @@ const updateProfile = async (req, res, next) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Only update fields that were actually sent
-    if (firstName  !== undefined) user.firstName  = firstName;
-    if (lastName   !== undefined) user.lastName   = lastName;
-    if (phone      !== undefined) user.phone      = phone;
+    if (firstName   !== undefined) user.firstName   = firstName;
+    if (lastName    !== undefined) user.lastName    = lastName;
+    if (phone       !== undefined) user.phone       = phone;
     if (avatarClass !== undefined) user.avatarClass = avatarClass;
-    if (avatarUrl  !== undefined) user.avatarUrl  = avatarUrl;
+    if (avatarUrl   !== undefined) user.avatarUrl   = avatarUrl;
 
-    // Merge settings (don't wipe unset keys)
     if (settings) {
       user.settings = { ...user.settings.toObject(), ...settings };
     }
@@ -92,6 +111,7 @@ const updateProfile = async (req, res, next) => {
         avatarClass: user.avatarClass,
         avatarUrl:   user.avatarUrl,
         initials:    user.initials,
+        userCode:    user.userCode,
         settings:    user.settings,
       },
     });
@@ -101,28 +121,13 @@ const updateProfile = async (req, res, next) => {
 };
 
 // ── @DELETE /api/users/me  (protected) ────────────────────
-// Soft-wipe: removes user + their messages + chats they're sole member of
 const deleteAccount = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    // Remove user from all chats they're in
-    await Chat.updateMany(
-      { members: userId },
-      { $pull: { members: userId } }
-    );
-
-    // Delete chats that now have fewer than 2 members
-    await Chat.deleteMany({ members: { $size: 0 } });
+    await Chat.updateMany({ members: userId }, { $pull: { members: userId } });
     await Chat.deleteMany({ $expr: { $lt: [{ $size: '$members' }, 2] } });
-
-    // Soft-delete their messages (add to deletedFor)
-    await Message.updateMany(
-      { sender: userId },
-      { $addToSet: { deletedFor: userId } }
-    );
-
-    // Delete the user
+    await Message.updateMany({ sender: userId }, { $addToSet: { deletedFor: userId } });
     await User.findByIdAndDelete(userId);
 
     res.json({ message: 'Account deleted successfully' });
@@ -131,4 +136,4 @@ const deleteAccount = async (req, res, next) => {
   }
 };
 
-module.exports = { getUsers, getUser, updateProfile, deleteAccount };
+module.exports = { getUsers, getUser, findByCode, updateProfile, deleteAccount };

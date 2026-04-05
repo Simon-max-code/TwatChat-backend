@@ -1,32 +1,18 @@
 /* ============================================================
    TwatChat — models/user.js
-   bcryptjs v3 compatible — no next() in async hooks
    ============================================================ */
 
 'use strict';
 
-const mongoose = require('mongoose');
-const bcrypt   = require('bcryptjs');
+const mongoose            = require('mongoose');
+const bcrypt              = require('bcryptjs');
+const { generateUserCode } = require('../utils/helpers');
 
 const userSchema = new mongoose.Schema(
   {
-    firstName: {
-      type: String,
-      trim: true,
-      default: '',
-    },
-
-    lastName: {
-      type: String,
-      trim: true,
-      default: '',
-    },
-
-    displayName: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+    firstName: { type: String, trim: true, default: '' },
+    lastName:  { type: String, trim: true, default: '' },
+    displayName: { type: String, trim: true, default: '' },
 
     email: {
       type: String,
@@ -37,11 +23,7 @@ const userSchema = new mongoose.Schema(
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email address'],
     },
 
-    phone: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+    phone:    { type: String, trim: true, default: '' },
 
     password: {
       type: String,
@@ -50,35 +32,20 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    avatarClass: {
-      type: String,
-      default: 'av-0',
+    // ── Unique shareable code e.g. "TC-4829-XK" ───────────
+    userCode: {
+      type:    String,
+      unique:  true,
+      default: generateUserCode,
     },
 
-    avatarUrl: {
-      type: String,
-      default: '',
-    },
+    avatarClass: { type: String, default: 'av-0' },
+    avatarUrl:   { type: String, default: '' },
+    initials:    { type: String, default: 'U' },
 
-    initials: {
-      type: String,
-      default: 'U',
-    },
-
-    isOnline: {
-      type: Boolean,
-      default: false,
-    },
-
-    lastSeen: {
-      type: Date,
-      default: Date.now,
-    },
-
-    socketId: {
-      type: String,
-      default: '',
-    },
+    isOnline:  { type: Boolean, default: false },
+    lastSeen:  { type: Date,    default: Date.now },
+    socketId:  { type: String,  default: '' },
 
     settings: {
       notifications: { type: Boolean, default: true  },
@@ -87,14 +54,15 @@ const userSchema = new mongoose.Schema(
       hiddenMode:    { type: Boolean, default: false },
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// ── Pre-save hook — bcryptjs v3 compatible (no next) ───────
+// ── Index for fast code lookup ─────────────────────────────
+userSchema.index({ userCode: 1 });
+
+// ── Single pre-save hook ───────────────────────────────────
 userSchema.pre('save', async function () {
-  // ── Auto-set displayName ─────────────────────────────────
+  // Auto-set displayName
   const f = (this.firstName || '').trim();
   const l = (this.lastName  || '').trim();
 
@@ -104,20 +72,20 @@ userSchema.pre('save', async function () {
       : f || this.email.split('@')[0];
   }
 
-  // ── Auto-set initials ────────────────────────────────────
+  // Auto-set initials
   if (!this.initials || this.initials === 'U') {
     if (f && l)  this.initials = (f[0] + l[0]).toUpperCase();
     else if (f)  this.initials = f.slice(0, 2).toUpperCase();
     else         this.initials = 'U';
   }
 
-  // ── Hash password only if modified ──────────────────────
+  // Hash password only if modified
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 10);
   }
 });
 
-// ── Compare password ─────────────────────────────────────
+// ── Compare password ───────────────────────────────────────
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

@@ -5,72 +5,58 @@
 
 'use strict';
 
-const mongoose = require('mongoose');
+const mongoose              = require('mongoose');
+const { generateInviteCode } = require('../utils/helpers');
 
 const chatSchema = new mongoose.Schema(
   {
-    // ── DM or group ──────────────────────────────────────
-    isGroup: {
-      type: Boolean,
-      default: false,
+    isGroup: { type: Boolean, default: false },
+
+    // ── Group only ────────────────────────────────────────
+    name: { type: String, trim: true, default: '' },
+    icon: { type: String, default: '🚀' },
+
+    // ── Invite link for groups ────────────────────────────
+    // Only generated when admin requests it
+    inviteCode: {
+      type:   String,
+      unique: true,
+      sparse: true, // allows multiple nulls
+      default: null,
     },
 
-    // ── Group only fields ─────────────────────────────────
-    name: {
-      type: String,
-      trim: true,
-      default: '',
+    inviteActive: {
+      type:    Boolean,
+      default: false, // invite link disabled until generated
     },
 
-    icon: {
-      type: String,
-      default: '🚀',
-    },
+    members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
-    // ── Members (DM = 2, group = 2+) ──────────────────────
-    members: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
-
-    // ── Group admin ───────────────────────────────────────
     admin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type:    mongoose.Schema.Types.ObjectId,
+      ref:     'User',
       default: null,
     },
 
-    // ── Last message preview (for sidebar list) ───────────
     lastMessage: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Message',
+      type:    mongoose.Schema.Types.ObjectId,
+      ref:     'Message',
       default: null,
     },
 
-    // ── Per-member unread counts ──────────────────────────
     unreadCounts: {
-      type: Map,
-      of: Number,
+      type:    Map,
+      of:      Number,
       default: {},
     },
 
-    // ── Muted members ─────────────────────────────────────
-    mutedBy: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
+    mutedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// ── Index for fast lookup of a user's chats ────────────────
-chatSchema.index({ members: 1 });
+chatSchema.index({ members:   1 });
 chatSchema.index({ updatedAt: -1 });
+chatSchema.index({ inviteCode: 1 });
 
 module.exports = mongoose.model('Chat', chatSchema);

@@ -1,26 +1,23 @@
 /* ============================================================
    TwatChat — controllers/chatCtrl.js
    createChat | getChats | getChat | createGroup |
-   updateGroup | leaveGroup | deleteChat
+   updateGroup | leaveGroup | deleteChat |
+   generateInvite | joinByInvite
    ============================================================ */
 
 'use strict';
 
-const Chat    = require('../models/chat');
-const Message = require('../models/message');
-const User    = require('../models/user');
+const Chat                = require('../models/chat');
+const Message             = require('../models/message');
+const User                = require('../models/user');
+const { generateInviteCode } = require('../utils/helpers');
 
-// ── @POST /api/chats  (protected) ─────────────────────────
-// Creates or returns existing DM between two users
+// ── @POST /api/chats ───────────────────────────────────────
 const createChat = async (req, res, next) => {
   try {
     const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: 'userId is required' });
 
-    if (!userId) {
-      return res.status(400).json({ message: 'userId is required' });
-    }
-
-    // Check if DM already exists between these two users
     let chat = await Chat.findOne({
       isGroup:  false,
       members: { $all: [req.user._id, userId], $size: 2 },
@@ -30,33 +27,26 @@ const createChat = async (req, res, next) => {
 
     if (chat) return res.json({ chat });
 
-    // Create new DM
     chat = await Chat.create({
       isGroup: false,
       members: [req.user._id, userId],
     });
 
-    chat = await Chat.findById(chat._id)
-      .populate('members', '-password');
-
+    chat = await Chat.findById(chat._id).populate('members', '-password');
     res.status(201).json({ chat });
   } catch (err) {
     next(err);
   }
 };
 
-// ── @GET /api/chats  (protected) ──────────────────────────
-// Returns all chats for the logged-in user, sorted by latest activity
+// ── @GET /api/chats ────────────────────────────────────────
 const getChats = async (req, res, next) => {
   try {
     const chats = await Chat.find({ members: req.user._id })
-      .populate('members',     'firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen')
+      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen userCode')
       .populate({
         path:     'lastMessage',
-        populate: {
-          path:   'sender',
-          select: 'firstName lastName displayName initials avatarClass',
-        },
+        populate: { path: 'sender', select: 'firstName lastName displayName initials avatarClass' },
       })
       .sort({ updatedAt: -1 });
 
@@ -66,28 +56,19 @@ const getChats = async (req, res, next) => {
   }
 };
 
-// ── @GET /api/chats/:id  (protected) ──────────────────────
+// ── @GET /api/chats/:id ────────────────────────────────────
 const getChat = async (req, res, next) => {
   try {
-    const chat = await Chat.findOne({
-      _id:     req.params.id,
-      members: req.user._id, // must be a member
-    })
-      .populate('members',     'firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen')
-      .populate('admin',       'firstName lastName displayName initials avatarClass')
+    const chat = await Chat.findOne({ _id: req.params.id, members: req.user._id })
+      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline lastSeen userCode')
+      .populate('admin',   'firstName lastName displayName initials avatarClass')
       .populate({
         path:     'lastMessage',
-        populate: {
-          path:   'sender',
-          select: 'firstName lastName displayName initials avatarClass',
-        },
+        populate: { path: 'sender', select: 'firstName lastName displayName initials avatarClass' },
       });
 
-    if (!chat) {
-      return res.status(404).json({ message: 'Chat not found' });
-    }
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
-    // Reset unread count for this user
     chat.unreadCounts.set(String(req.user._id), 0);
     await chat.save();
 
@@ -97,20 +78,14 @@ const getChat = async (req, res, next) => {
   }
 };
 
-// ── @POST /api/chats/group  (protected) ───────────────────
+// ── @POST /api/chats/group ─────────────────────────────────
 const createGroup = async (req, res, next) => {
   try {
     const { name, icon, memberIds } = req.body;
 
-    if (!name) {
-      return res.status(400).json({ message: 'Group name is required' });
-    }
+    if (!name)                       return res.status(400).json({ message: 'Group name is required' });
+    if (!memberIds?.length)          return res.status(400).json({ message: 'Add at least one member' });
 
-    if (!memberIds || memberIds.length === 0) {
-      return res.status(400).json({ message: 'Add at least one member' });
-    }
-
-    // Always include the creator
     const members = [...new Set([String(req.user._id), ...memberIds])];
 
     const chat = await Chat.create({
@@ -122,7 +97,7 @@ const createGroup = async (req, res, next) => {
     });
 
     const populated = await Chat.findById(chat._id)
-      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline')
+      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
       .populate('admin',   'firstName lastName displayName initials avatarClass');
 
     res.status(201).json({ chat: populated });
@@ -131,29 +106,20 @@ const createGroup = async (req, res, next) => {
   }
 };
 
-// ── @PUT /api/chats/group/:id  (protected) ────────────────
-// Admin only — update group name / icon
+// ── @PUT /api/chats/group/:id ──────────────────────────────
 const updateGroup = async (req, res, next) => {
   try {
     const { name, icon } = req.body;
 
-    const chat = await Chat.findOne({
-      _id:     req.params.id,
-      isGroup: true,
-      admin:   req.user._id, // only admin can update
-    });
-
-    if (!chat) {
-      return res.status(404).json({ message: 'Group not found or not authorised' });
-    }
+    const chat = await Chat.findOne({ _id: req.params.id, isGroup: true, admin: req.user._id });
+    if (!chat) return res.status(404).json({ message: 'Group not found or not authorised' });
 
     if (name) chat.name = name.trim();
     if (icon) chat.icon = icon;
-
     await chat.save();
 
     const populated = await Chat.findById(chat._id)
-      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline')
+      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
       .populate('admin',   'firstName lastName displayName initials avatarClass');
 
     res.json({ chat: populated });
@@ -162,30 +128,18 @@ const updateGroup = async (req, res, next) => {
   }
 };
 
-// ── @DELETE /api/chats/group/:id/leave  (protected) ───────
+// ── @DELETE /api/chats/group/:id/leave ────────────────────
 const leaveGroup = async (req, res, next) => {
   try {
-    const chat = await Chat.findOne({
-      _id:     req.params.id,
-      isGroup: true,
-      members: req.user._id,
-    });
+    const chat = await Chat.findOne({ _id: req.params.id, isGroup: true, members: req.user._id });
+    if (!chat) return res.status(404).json({ message: 'Group not found' });
 
-    if (!chat) {
-      return res.status(404).json({ message: 'Group not found' });
-    }
+    chat.members = chat.members.filter(m => String(m) !== String(req.user._id));
 
-    // Remove user from members
-    chat.members = chat.members.filter(
-      (m) => String(m) !== String(req.user._id)
-    );
-
-    // If admin leaves, assign next member as admin
     if (String(chat.admin) === String(req.user._id)) {
       chat.admin = chat.members[0] || null;
     }
 
-    // If no members left, delete the group
     if (chat.members.length === 0) {
       await Chat.findByIdAndDelete(chat._id);
       await Message.deleteMany({ chat: chat._id });
@@ -193,39 +147,22 @@ const leaveGroup = async (req, res, next) => {
     }
 
     await chat.save();
-
     res.json({ message: 'Left group successfully' });
   } catch (err) {
     next(err);
   }
 };
 
-// ── @DELETE /api/chats/:id  (protected) ───────────────────
-// Delete a DM chat + its messages for the requesting user
+// ── @DELETE /api/chats/:id ─────────────────────────────────
 const deleteChat = async (req, res, next) => {
   try {
-    const chat = await Chat.findOne({
-      _id:     req.params.id,
-      members: req.user._id,
-      isGroup: false,
-    });
+    const chat = await Chat.findOne({ _id: req.params.id, members: req.user._id, isGroup: false });
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
-    if (!chat) {
-      return res.status(404).json({ message: 'Chat not found' });
-    }
+    await Message.updateMany({ chat: chat._id }, { $addToSet: { deletedFor: req.user._id } });
 
-    // Soft-delete all messages for this user
-    await Message.updateMany(
-      { chat: chat._id },
-      { $addToSet: { deletedFor: req.user._id } }
-    );
+    chat.members = chat.members.filter(m => String(m) !== String(req.user._id));
 
-    // Remove user from chat members
-    chat.members = chat.members.filter(
-      (m) => String(m) !== String(req.user._id)
-    );
-
-    // If both users deleted — remove chat entirely
     if (chat.members.length === 0) {
       await Chat.findByIdAndDelete(chat._id);
       await Message.deleteMany({ chat: chat._id });
@@ -239,6 +176,56 @@ const deleteChat = async (req, res, next) => {
   }
 };
 
+// ── @POST /api/chats/group/:id/invite  (admin only) ───────
+// Generates or returns existing invite link for a group
+const generateInvite = async (req, res, next) => {
+  try {
+    const chat = await Chat.findOne({ _id: req.params.id, isGroup: true, admin: req.user._id });
+    if (!chat) return res.status(404).json({ message: 'Group not found or not authorised' });
+
+    // Generate new code if none exists or if refresh requested
+    if (!chat.inviteCode || req.body.refresh) {
+      chat.inviteCode  = generateInviteCode();
+    }
+
+    chat.inviteActive = true;
+    await chat.save();
+
+    res.json({
+      inviteCode: chat.inviteCode,
+      inviteLink: `${process.env.CLIENT_URL || 'https://twat-chat.vercel.app'}?join=${chat.inviteCode}`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── @POST /api/chats/join/:inviteCode  (protected) ────────
+// Any logged-in user can join a group via invite link
+const joinByInvite = async (req, res, next) => {
+  try {
+    const { inviteCode } = req.params;
+
+    const chat = await Chat.findOne({ inviteCode, isGroup: true, inviteActive: true });
+    if (!chat) return res.status(404).json({ message: 'Invalid or expired invite link' });
+
+    // Already a member
+    const isMember = chat.members.some(m => String(m) === String(req.user._id));
+    if (isMember) return res.status(400).json({ message: 'You are already in this group' });
+
+    chat.members.push(req.user._id);
+    await chat.save();
+
+    const populated = await Chat.findById(chat._id)
+      .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
+      .populate('admin',   'firstName lastName displayName initials avatarClass');
+
+    res.json({ chat: populated, message: `Joined "${chat.name}" successfully` });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   createChat,
   getChats,
@@ -247,4 +234,6 @@ module.exports = {
   updateGroup,
   leaveGroup,
   deleteChat,
+  generateInvite,
+  joinByInvite,
 };
