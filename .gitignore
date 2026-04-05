@@ -1,1 +1,7 @@
-.env
+.env  
+
+PORT=5000
+MONGO_URI=mongodb+srv://maxsimon790_db_user:YOUR_PASSWORD@twatchat.1bi0qam.mongodb.net/twatchat?retryWrites=true&w=majority&appName=Twatchat
+JWT_SECRET=a51a548555c69ffe4197abc6f5edd66b5515d4e1b089819bcb060a1961ccd29b
+JWT_EXPIRES_IN=30d
+NODE_ENV=development
