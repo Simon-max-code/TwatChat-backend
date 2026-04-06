@@ -101,6 +101,12 @@ const getMessages = async (req, res, next) => {
       return res.status(404).json({ message: 'Chat not found' });
     }
 
+    // Reset unread count when messages are loaded
+const chat = await Chat.findById(chatId);
+if (chat) {
+  chat.unreadCounts.set(String(req.user._id), 0);
+  await chat.save();
+}
     const messages = await Message.find({
       chat:       chatId,
       deletedFor: { $ne: req.user._id }, // exclude soft-deleted
