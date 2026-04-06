@@ -54,12 +54,27 @@ const sendMessage = async (req, res, next) => {
     await chat.save();
 
     // ── Emit to all members in the chat room via Socket.io ─
-    try {
-      const io = getIO();
-      io.to(chatId).emit('message:new', { message, chatId });
-    } catch (_) {
-      // Socket not critical — don't fail the HTTP response
+   try {
+  const io = getIO();
+
+  // Emit to chat room (for people who have the chat open)
+  io.to(chatId).emit('message:new', { message, chatId });
+
+  // Also notify each member via personal room
+  // (for people who haven't opened the chat yet)
+  const freshChat = await Chat.findById(chatId).select('members unreadCounts');
+  freshChat.members.forEach((memberId) => {
+    if (String(memberId) !== String(req.user._id)) {
+      io.to(String(memberId)).emit('chat:newMessage', {
+        chatId,
+        message,
+        unreadCount: freshChat.unreadCounts.get(String(memberId)) || 0,
+      });
     }
+  });
+} catch (_) {
+  // Socket not critical — don't fail the HTTP response
+}
 
     res.status(201).json({ message });
   } catch (err) {

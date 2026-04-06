@@ -65,13 +65,14 @@ module.exports = (io, socket) => {
       // Broadcast to everyone in the room (including sender)
       io.to(chatId).emit('message:new', { message, chatId });
 
-      // Notify members who are online but not in this room
-      // (updates their sidebar unread badge)
+      // Notify ALL members via their personal room
+      // This works even if they haven't opened the chat yet
       chat.members.forEach((memberId) => {
         if (String(memberId) !== String(senderId)) {
-          io.to(String(memberId)).emit('chat:updated', {
+          // Emit to personal room (userId) — always joined on connect
+          io.to(String(memberId)).emit('chat:newMessage', {
             chatId,
-            lastMessage: message,
+            message,
             unreadCount: chat.unreadCounts.get(String(memberId)) || 0,
           });
         }
