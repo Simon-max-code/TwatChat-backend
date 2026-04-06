@@ -22,7 +22,7 @@ const chatSchema = new mongoose.Schema(
       type:   String,
       unique: true,
       sparse: true, // allows multiple nulls
-      default: null,
+      // no default — stays undefined until generated
     },
 
     inviteActive: {
