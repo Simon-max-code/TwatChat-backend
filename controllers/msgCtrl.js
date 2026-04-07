@@ -21,7 +21,6 @@ const sendMessage = async (req, res, next) => {
       return res.status(400).json({ message: 'Message text is required' });
     }
 
-    // Verify user is a member of this chat
     const chat = await Chat.findOne({
       _id:     chatId,
       members: req.user._id,
@@ -31,21 +30,17 @@ const sendMessage = async (req, res, next) => {
       return res.status(404).json({ message: 'Chat not found' });
     }
 
-    // Create message
     let message = await Message.create({
       chat:   chatId,
       sender: req.user._id,
       text:   text.trim(),
     });
 
-    // Populate sender for socket emit + response
     message = await Message.findById(message._id)
       .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl');
 
-    // Update chat's lastMessage + updatedAt + unread counts
     chat.lastMessage = message._id;
 
-    // Increment unread for all members except sender
     chat.members.forEach((memberId) => {
       if (String(memberId) !== String(req.user._id)) {
         const current = chat.unreadCounts.get(String(memberId)) || 0;
@@ -55,65 +50,56 @@ const sendMessage = async (req, res, next) => {
 
     await chat.save();
 
-    // ── Emit to all members in the chat room via Socket.io ─
-   try {
-  const io = getIO();
+    // ── Socket emit ───────────────────────────────────────
+    try {
+      const io = getIO();
+      io.to(chatId).emit('message:new', { message, chatId });
 
-  // Emit to chat room (for people who have the chat open)
-  io.to(chatId).emit('message:new', { message, chatId });
-
-  // Also notify each member via personal room
-  // (for people who haven't opened the chat yet)
-  const freshChat = await Chat.findById(chatId).select('members unreadCounts');
-  freshChat.members.forEach((memberId) => {
-    if (String(memberId) !== String(req.user._id)) {
-      io.to(String(memberId)).emit('chat:newMessage', {
-        chatId,
-        message,
-        unreadCount: freshChat.unreadCounts.get(String(memberId)) || 0,
+      const freshChat = await Chat.findById(chatId).select('members unreadCounts');
+      freshChat.members.forEach((memberId) => {
+        if (String(memberId) !== String(req.user._id)) {
+          io.to(String(memberId)).emit('chat:newMessage', {
+            chatId,
+            message,
+            unreadCount: freshChat.unreadCounts.get(String(memberId)) || 0,
+          });
+        }
       });
-    }
-  });
-} catch (_) {
-  // Socket not critical — don't fail the HTTP response
-}
+    } catch (_) {}
+
+    // ── Push notifications ────────────────────────────────
+    try {
+      const sender = await User.findById(req.user._id)
+        .select('displayName firstName');
+
+      const senderName = sender?.displayName || sender?.firstName || 'Someone';
+      const preview    = text.trim().length > 60
+        ? text.trim().slice(0, 60) + '…'
+        : text.trim();
+
+      const notifyIds = chat.members.filter(
+        (id) => String(id) !== String(req.user._id)
+      );
+
+      await Promise.allSettled(
+        notifyIds.map((memberId) =>
+          sendPushToUser(String(memberId), {
+            title:  senderName,
+            body:   preview,
+            chatId: chatId,
+            icon:   '/icons/192.png',
+            badge:  '/icons/72.png',
+            tag:    `msg-${chatId}`,
+          })
+        )
+      );
+    } catch (_) {}
 
     res.status(201).json({ message });
   } catch (err) {
     next(err);
   }
 };
-
-// ── Push notifications (app closed / backgrounded) ────
-try {
-  const sender = await User.findById(req.user._id)
-    .select('displayName firstName');
-
-  const senderName = sender?.displayName || sender?.firstName || 'Someone';
-  const preview    = text.trim().length > 60
-    ? text.trim().slice(0, 60) + '…'
-    : text.trim();
-
-  // Notify all members except sender
-  const notifyIds = chat.members.filter(
-    (id) => String(id) !== String(req.user._id)
-  );
-
-  await Promise.allSettled(
-    notifyIds.map((memberId) =>
-      sendPushToUser(String(memberId), {
-        title:  senderName,
-        body:   preview,
-        chatId: chatId,
-        icon:   '/icons/192.png',
-        badge:  '/icons/72.png',
-        tag:    `msg-${chatId}`, // collapses multiple msgs per chat
-      })
-    )
-  );
-} catch (_) {
-  // Push is non-critical
-}
 
 // ── @GET /api/chats/:chatId/messages  (protected) ─────────
 // Paginated — ?page=1&limit=40
