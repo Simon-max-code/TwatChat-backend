@@ -8,6 +8,8 @@
 const Message       = require('../models/message');
 const Chat          = require('../models/chat');
 const { getIO }     = require('../config/socket');
+const { sendPushToUser } = require('../services/push');
+const User = require('../models/user');
 
 // ── @POST /api/chats/:chatId/messages  (protected) ────────
 const sendMessage = async (req, res, next) => {
@@ -81,6 +83,37 @@ const sendMessage = async (req, res, next) => {
     next(err);
   }
 };
+
+// ── Push notifications (app closed / backgrounded) ────
+try {
+  const sender = await User.findById(req.user._id)
+    .select('displayName firstName');
+
+  const senderName = sender?.displayName || sender?.firstName || 'Someone';
+  const preview    = text.trim().length > 60
+    ? text.trim().slice(0, 60) + '…'
+    : text.trim();
+
+  // Notify all members except sender
+  const notifyIds = chat.members.filter(
+    (id) => String(id) !== String(req.user._id)
+  );
+
+  await Promise.allSettled(
+    notifyIds.map((memberId) =>
+      sendPushToUser(String(memberId), {
+        title:  senderName,
+        body:   preview,
+        chatId: chatId,
+        icon:   '/icons/192.png',
+        badge:  '/icons/72.png',
+        tag:    `msg-${chatId}`, // collapses multiple msgs per chat
+      })
+    )
+  );
+} catch (_) {
+  // Push is non-critical
+}
 
 // ── @GET /api/chats/:chatId/messages  (protected) ─────────
 // Paginated — ?page=1&limit=40
