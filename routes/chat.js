@@ -22,57 +22,37 @@ const {
 
 const {
   sendMessage,
+  sendMedia,
   getMessages,
   deleteMessage,
   clearChat,
 } = require('../controllers/msgCtrl');
 
 const { protect } = require('../middleware/auth');
+const upload      = require('../middleware/upload');
 
 router.use(protect);
 
 // ── Chat routes ────────────────────────────────────────────
-
-// @POST   /api/chats                      — create or fetch DM
 router.post('/', createChat);
-
-// @GET    /api/chats                      — all chats for user
-router.get('/', getChats);
-
-// @POST   /api/chats/group               — create group
-// NOTE: before /:id
+router.get('/',  getChats);
 router.post('/group', createGroup);
-
-// @POST   /api/chats/join/:inviteCode    — join group via invite
 router.post('/join/:inviteCode', joinByInvite);
-
-// @GET    /api/chats/:id                 — single chat
 router.get('/:id', getChat);
-
-// @DELETE /api/chats/:id                 — delete DM
 router.delete('/:id', deleteChat);
-
-// @PUT    /api/chats/group/:id           — update group (admin)
 router.put('/group/:id', updateGroup);
-
-// @DELETE /api/chats/group/:id/leave     — leave group
 router.delete('/group/:id/leave', leaveGroup);
-
-// @POST   /api/chats/group/:id/invite    — generate invite link (admin)
 router.post('/group/:id/invite', generateInvite);
 
 // ── Message routes ─────────────────────────────────────────
-
-// @GET    /api/chats/:chatId/messages    — get messages (paginated)
-router.get('/:chatId/messages', getMessages);
-
-// @POST   /api/chats/:chatId/messages    — send message
-router.post('/:chatId/messages', sendMessage);
-
-// @DELETE /api/chats/:chatId/messages    — clear all messages
-router.delete('/:chatId/messages', clearChat);
-
-// @DELETE /api/chats/:chatId/messages/:msgId — delete single message
+router.get('/:chatId/messages',          getMessages);
+router.post('/:chatId/messages',         sendMessage);
+router.delete('/:chatId/messages',       clearChat);
 router.delete('/:chatId/messages/:msgId', deleteMessage);
+
+// ── Media upload route ─────────────────────────────────────
+// @POST /api/chats/:chatId/messages/media
+// Accepts single file — image, video, or audio
+router.post('/:chatId/messages/media', upload.single('file'), sendMedia);
 
 module.exports = router;
