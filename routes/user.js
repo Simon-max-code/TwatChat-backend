@@ -12,6 +12,7 @@ const {
   getUser,
   findByCode,
   updateProfile,
+  updateUsername,
   deleteAccount,
 } = require('../controllers/userCtrl');
 
@@ -31,6 +32,9 @@ router.get('/:id', getUser);
 
 // @PUT    /api/users/profile       — update own profile
 router.put('/profile', updateProfile);
+
+// @PUT    /api/users/username     — change display name (max 3 times)
+router.put('/username', updateUsername);
 
 // @DELETE /api/users/me            — delete own account
 router.delete('/me', deleteAccount);

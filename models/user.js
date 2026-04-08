@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema(
     firstName: { type: String, trim: true, default: '' },
     lastName:  { type: String, trim: true, default: '' },
     displayName: { type: String, trim: true, default: '' },
+    customDisplayName: { type: String, trim: true, default: '' },
+    usernameChanges:   { type: Number, default: 0 },
 
     email: {
       type: String,

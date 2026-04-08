@@ -120,6 +120,68 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+// ── @PUT /api/users/username  (protected) ─────────────────
+const updateUsername = async (req, res, next) => {
+  try {
+    const { displayName } = req.body;
+
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ message: 'Display name is required' });
+    }
+
+    const clean = displayName.trim();
+
+    // Basic validation — no special chars except spaces, hyphens, underscores
+    if (!/^[a-zA-Z0-9 _\-]{2,30}$/.test(clean)) {
+      return res.status(400).json({
+        message: 'Username must be 2–30 characters. Letters, numbers, spaces, _ and - only.',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const MAX_CHANGES = 3;
+
+    if (user.usernameChanges >= MAX_CHANGES) {
+      return res.status(403).json({
+        message: `You've used all ${MAX_CHANGES} username changes.`,
+        changesUsed: user.usernameChanges,
+        changesLeft: 0,
+      });
+    }
+
+    user.customDisplayName = clean;
+    user.displayName       = clean;
+    user.usernameChanges   += 1;
+
+    // Recompute initials from custom name
+    const parts = clean.split(' ').filter(Boolean);
+    if (parts.length >= 2) {
+      user.initials = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    } else {
+      user.initials = clean.slice(0, 2).toUpperCase();
+    }
+
+    await user.save();
+
+    // Update stored session user
+    res.json({
+      message:     'Username updated',
+      changesUsed: user.usernameChanges,
+      changesLeft: MAX_CHANGES - user.usernameChanges,
+      user: {
+        _id:             user._id,
+        displayName:     user.displayName,
+        initials:        user.initials,
+        usernameChanges: user.usernameChanges,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── @DELETE /api/users/me  (protected) ────────────────────
 const deleteAccount = async (req, res, next) => {
   try {
@@ -136,4 +198,4 @@ const deleteAccount = async (req, res, next) => {
   }
 };
 
-module.exports = { getUsers, getUser, findByCode, updateProfile, deleteAccount };
+module.exports = { getUsers, getUser, findByCode, updateProfile, updateUsername, deleteAccount };
