@@ -28,28 +28,33 @@ module.exports = (io, socket) => {
 
   // ── Send message via socket ───────────────────────────────
   // Alternative to REST POST — used for instant delivery
-  socket.on('message:send', async ({ chatId, text, senderId }) => {
-    try {
-      if (!chatId || !text || !senderId) return;
+ socket.on('message:send', async ({ chatId, text, senderId, replyTo }) => {
+  try {
+    if (!chatId || !text || !senderId) return;
 
-      // Verify sender is a member
+
+    // Verify sender is a member
       const chat = await Chat.findOne({
         _id:     chatId,
         members: senderId,
       });
 
       if (!chat) return;
+    // ...
+    let message = await Message.create({
+      chat:    chatId,
+      sender:  senderId,
+      text:    text.trim(),
+      replyTo: replyTo || null,
+    });
 
-      // Persist to DB
-      let message = await Message.create({
-        chat:   chatId,
-        sender: senderId,
-        text:   text.trim(),
+    message = await Message.findById(message._id)
+      .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl')
+      .populate({
+        path:     'replyTo',
+        populate: { path: 'sender', select: 'displayName initials avatarClass' },
       });
-
-      message = await Message.findById(message._id)
-        .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl');
-
+      
       // Update chat lastMessage + unread counts
       chat.lastMessage = message._id;
 

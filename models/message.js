@@ -58,6 +58,14 @@ const messageSchema = new mongoose.Schema(
         ref:  'User',
       },
     ],
+
+    // ── Reply-to ───────────────────────────────────────────────
+      replyTo: {
+        type:    mongoose.Schema.Types.ObjectId,
+         ref:     'Message',
+         default: null,
+},
+
   },
   {
     timestamps: true,

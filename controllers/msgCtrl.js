@@ -73,7 +73,7 @@ const pushToMembers = async (chat, message, senderId) => {
 // ── @POST /api/chats/:chatId/messages  (protected) ────────
 const sendMessage = async (req, res, next) => {
   try {
-    const { text } = req.body;
+    const { text, replyTo } = req.body;
     const { chatId } = req.params;
 
     if (!text || !text.trim()) {
@@ -84,13 +84,18 @@ const sendMessage = async (req, res, next) => {
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
     let message = await Message.create({
-      chat:   chatId,
-      sender: req.user._id,
-      text:   text.trim(),
-    });
+  chat:    chatId,
+  sender:  req.user._id,
+  text:    text.trim(),
+  replyTo: replyTo || null,
+   });
 
-    message = await Message.findById(message._id)
-      .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl');
+   message = await Message.findById(message._id)
+  .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl')
+  .populate({
+    path:     'replyTo',
+    populate: { path: 'sender', select: 'displayName initials avatarClass' },
+  });
 
     // Update chat
     chat.lastMessage = message._id;
@@ -186,7 +191,7 @@ const sendMedia = async (req, res, next) => {
       }
     });
     await chat.save();
-    
+
     // Push notification to offline members
     await pushToMembers(chat, message, req.user._id);
 
@@ -218,14 +223,18 @@ const getMessages = async (req, res, next) => {
     await chat.save();
 
     const messages = await Message.find({
-      chat:       chatId,
-      deletedFor: { $ne: req.user._id },
-    })
-      .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
+  chat:       chatId,
+  deletedFor: { $ne: req.user._id },
+})
+  .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl')
+  .populate({
+    path:     'replyTo',
+    populate: { path: 'sender', select: 'displayName initials avatarClass' },
+  })
+  .sort({ createdAt: -1 })
+  .skip(skip)
+  .limit(limit);
+  
     messages.reverse();
 
     const total = await Message.countDocuments({
