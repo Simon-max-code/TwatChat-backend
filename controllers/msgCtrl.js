@@ -10,6 +10,7 @@ const Chat                             = require('../models/chat');
 const { getIO }                        = require('../config/socket');
 const { uploadToCloudinary,
         deleteFromCloudinary }         = require('../utils/cloudinary');
+const { sendPushToUser } = require('../services/push');
 
 // ── Helper: notify members via socket ─────────────────────
 const notifyMembers = async (io, chat, message, senderId) => {
@@ -28,6 +29,45 @@ const notifyMembers = async (io, chat, message, senderId) => {
       });
     }
   });
+};
+
+// ── Helper: send push notification to offline members ──────
+const pushToMembers = async (chat, message, senderId) => {
+  try {
+    const senderName = message.sender?.displayName || message.sender?.firstName || 'Someone';
+    const preview    = message.text
+      ? (message.text.length > 80 ? message.text.slice(0, 80) + '…' : message.text)
+      : message.attachments?.[0]?.fileType === 'image'  ? '📷 Image'
+      : message.attachments?.[0]?.fileType === 'video'  ? '🎥 Video'
+      : message.attachments?.[0]?.fileType === 'audio'  ? '🎙️ Voice note'
+      : 'New message';
+
+    const title = chat.isGroup
+      ? `${chat.icon || '🚀'} ${chat.name}`
+      : senderName;
+
+    const body = chat.isGroup
+      ? `${senderName}: ${preview}`
+      : preview;
+
+    const payload = {
+      title,
+      body,
+      icon:   '/icons/192.png',
+      badge:  '/icons/72.png',
+      tag:    `chat-${chat._id}`,
+      chatId: String(chat._id),
+    };
+
+    // Send to all members except the sender
+    await Promise.allSettled(
+      chat.members
+        .filter(memberId => String(memberId) !== String(senderId))
+        .map(memberId => sendPushToUser(String(memberId), payload))
+    );
+  } catch (err) {
+    console.error('pushToMembers error:', err.message);
+  }
 };
 
 // ── @POST /api/chats/:chatId/messages  (protected) ────────
@@ -61,6 +101,9 @@ const sendMessage = async (req, res, next) => {
       }
     });
     await chat.save();
+
+      // Push notification to offline members
+    await pushToMembers(chat, message, req.user._id);
 
     // Socket emit
     try {
@@ -143,6 +186,9 @@ const sendMedia = async (req, res, next) => {
       }
     });
     await chat.save();
+    
+    // Push notification to offline members
+    await pushToMembers(chat, message, req.user._id);
 
     // Socket emit
     try {
