@@ -216,6 +216,12 @@ const joinByInvite = async (req, res, next) => {
     chat.members.push(req.user._id);
     await chat.save();
 
+    // ── Ban check ──────────────────────────────────────────
+    const isBanned = chat.bannedUsers.some(u => String(u) === String(req.user._id));
+    if (isBanned) {
+      return res.status(403).json({ message: 'You have been banned from this group' });
+    }
+
     const populated = await Chat.findById(chat._id)
       .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
       .populate('admin',   'firstName lastName displayName initials avatarClass');

@@ -70,6 +70,20 @@ const pushToMembers = async (chat, message, senderId) => {
   }
 };
 
+
+// ── Helper: generate a consistent anon tag for a user in a chat ──
+// Same user always gets the same tag within a chat session
+// Format: "Anon-4f2c"
+function getAnonTag(userId, chatId) {
+  const crypto = require('crypto');
+  const hash   = crypto
+    .createHash('sha256')
+    .update(String(userId) + String(chatId))
+    .digest('hex');
+  return 'Anon-' + hash.slice(0, 4);
+}
+
+
 // ── @POST /api/chats/:chatId/messages  (protected) ────────
 const sendMessage = async (req, res, next) => {
   try {
@@ -83,12 +97,33 @@ const sendMessage = async (req, res, next) => {
     const chat = await Chat.findOne({ _id: chatId, members: req.user._id });
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
+    // ── Resolve anonymous mode ─────────────────────────────
+    const isAnon = !!(chat.isGroup && chat.anonymousMode);
+    const anonTag = isAnon ? getAnonTag(req.user._id, chatId) : '';
+
+    // ── Mute check ─────────────────────────────────────────
+    if (chat.isGroup) {
+      const muteRecord = chat.getMuteRecord(req.user._id);
+      if (muteRecord) {
+        const remaining = muteRecord.unmuteAt
+          ? `until ${new Date(muteRecord.unmuteAt).toLocaleTimeString()}`
+          : 'indefinitely';
+        return res.status(403).json({
+          message:  `You are muted in this group (${remaining})`,
+          mutedUntil: muteRecord.unmuteAt,
+        });
+      }
+    }
+
     let message = await Message.create({
-  chat:    chatId,
-  sender:  req.user._id,
-  text:    text.trim(),
-  replyTo: replyTo || null,
-   });
+      chat:        chatId,
+      sender:      req.user._id,
+      text:        text.trim(),
+      replyTo:     replyTo || null,
+      isAnonymous: isAnon,
+      anonTag,
+    });
+
 
    message = await Message.findById(message._id)
   .populate('sender', 'firstName lastName displayName initials avatarClass avatarUrl')

@@ -40,12 +40,35 @@ module.exports = (io, socket) => {
       });
 
       if (!chat) return;
+
+      // ── Mute check ──────────────────────────────────────
+      if (chat.isGroup) {
+        const muteRecord = chat.getMuteRecord(senderId);
+        if (muteRecord) {
+          socket.emit('error', {
+            code:       'MUTED',
+            message:    'You are muted in this group',
+            mutedUntil: muteRecord.unmuteAt,
+          });
+          return;
+        }
+      }
     // ...
+
+    // ── Resolve anonymous mode ─────────────────────────────
+    const crypto   = require('crypto');
+    const isAnon   = !!(chat.isGroup && chat.anonymousMode);
+    const anonTag  = isAnon
+      ? 'Anon-' + crypto.createHash('sha256').update(String(senderId) + String(chatId)).digest('hex').slice(0, 4)
+      : '';
+
     let message = await Message.create({
-      chat:    chatId,
-      sender:  senderId,
-      text:    text.trim(),
-      replyTo: replyTo || null,
+      chat:        chatId,
+      sender:      senderId,
+      text:        text.trim(),
+      replyTo:     replyTo || null,
+      isAnonymous: isAnon,
+      anonTag,
     });
 
     message = await Message.findById(message._id)

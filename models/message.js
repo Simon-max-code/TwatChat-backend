@@ -64,8 +64,22 @@ const messageSchema = new mongoose.Schema(
         type:    mongoose.Schema.Types.ObjectId,
          ref:     'Message',
          default: null,
-},
+      },
 
+        // ── Anonymous mode ─────────────────────────────────────────
+    // Set to true if the chatroom was in anonymous mode when this
+    // message was sent. Persists even after the room leaves anon mode.
+    isAnonymous: {
+      type:    Boolean,
+      default: false,
+    },
+
+    // Stores the display label for anonymous messages
+    // e.g. "Anon-7f3a" — consistent per user per chat session
+    anonTag: {
+      type:    String,
+      default: '',
+    },
   },
   {
     timestamps: true,
