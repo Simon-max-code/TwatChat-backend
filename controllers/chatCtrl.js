@@ -202,6 +202,8 @@ const generateInvite = async (req, res, next) => {
 
 // ── @POST /api/chats/join/:inviteCode  (protected) ────────
 // Any logged-in user can join a group via invite link
+// controllers/chatCtrl.js — joinByInvite, reorder the logic:
+
 const joinByInvite = async (req, res, next) => {
   try {
     const { inviteCode } = req.params;
@@ -209,18 +211,18 @@ const joinByInvite = async (req, res, next) => {
     const chat = await Chat.findOne({ inviteCode, isGroup: true, inviteActive: true });
     if (!chat) return res.status(404).json({ message: 'Invalid or expired invite link' });
 
+    // ── Ban check FIRST — before touching members ──────────
+    const isBanned = chat.bannedUsers.some(u => String(u) === String(req.user._id));
+    if (isBanned) {
+      return res.status(403).json({ message: 'You have been banned from this group' });
+    }
+
     // Already a member
     const isMember = chat.members.some(m => String(m) === String(req.user._id));
     if (isMember) return res.status(400).json({ message: 'You are already in this group' });
 
     chat.members.push(req.user._id);
     await chat.save();
-
-    // ── Ban check ──────────────────────────────────────────
-    const isBanned = chat.bannedUsers.some(u => String(u) === String(req.user._id));
-    if (isBanned) {
-      return res.status(403).json({ message: 'You have been banned from this group' });
-    }
 
     const populated = await Chat.findById(chat._id)
       .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')

@@ -146,12 +146,14 @@ const unmuteMember = async (req, res, next) => {
 
    await chat.save();
 
-    try {
-      const io = getIO();
-      io.to(chatId).emit('moderation:banned', { userId, chatId });
-      io.to(userId).emit('moderation:you_were_banned', { chatId, chatName: chat.name });
-    } catch (_) {}
-
+try {
+  const io = getIO();
+  io.to(chatId).emit('moderation:unmuted', { userId, chatId });       
+  io.to(userId).emit('moderation:you_were_unmuted', {             
+    chatName: chat.name,
+    message: 'You have been unmuted',
+  });
+} catch (_) {}
     res.json({ message: 'Member unmuted' });
   } catch (err) {
     next(err);

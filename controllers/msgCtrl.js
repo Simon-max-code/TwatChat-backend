@@ -168,8 +168,22 @@ const sendMedia = async (req, res, next) => {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    const chat = await Chat.findOne({ _id: chatId, members: req.user._id });
-    if (!chat) return res.status(404).json({ message: 'Chat not found' });
+const chat = await Chat.findOne({ _id: chatId, members: req.user._id });
+if (!chat) return res.status(404).json({ message: 'Chat not found' });
+
+// ── Mute check (mirrors sendMessage) ──────────────────────
+if (chat.isGroup) {
+  const muteRecord = chat.getMuteRecord(req.user._id);
+  if (muteRecord) {
+    const remaining = muteRecord.unmuteAt
+      ? `until ${new Date(muteRecord.unmuteAt).toLocaleTimeString()}`
+      : 'indefinitely';
+    return res.status(403).json({
+      message:    `You are muted in this group (${remaining})`,
+      mutedUntil: muteRecord.unmuteAt,
+    });
+  }
+}
 
     // ── Determine file type ────────────────────────────────
     const mime = req.file.mimetype;

@@ -4,7 +4,7 @@
    ============================================================ */
 
 'use strict';
-
+const crypto  = require('crypto');
 const Message = require('../models/message');
 const Chat    = require('../models/chat');
 
@@ -56,7 +56,6 @@ module.exports = (io, socket) => {
     // ...
 
     // ── Resolve anonymous mode ─────────────────────────────
-    const crypto   = require('crypto');
     const isAnon   = !!(chat.isGroup && chat.anonymousMode);
     const anonTag  = isAnon
       ? 'Anon-' + crypto.createHash('sha256').update(String(senderId) + String(chatId)).digest('hex').slice(0, 4)
