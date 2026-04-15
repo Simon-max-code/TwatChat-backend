@@ -7,6 +7,7 @@
 
 'use strict';
 
+const { getIO } = require('../config/socket');
 const Chat                = require('../models/chat');
 const Message             = require('../models/message');
 const User                = require('../models/user');
@@ -147,6 +148,18 @@ const leaveGroup = async (req, res, next) => {
     }
 
     await chat.save();
+
+    try {
+  const io = getIO();
+  io.to(String(req.params.id)).emit('group:memberLeft', {
+    chatId: String(req.params.id),
+    userId: String(req.user._id),
+    chat:   await Chat.findById(req.params.id)
+              .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
+              .populate('admin', 'firstName lastName displayName initials avatarClass'),
+  });
+} catch (_) {}
+
     res.json({ message: 'Left group successfully' });
   } catch (err) {
     next(err);
@@ -228,6 +241,23 @@ const joinByInvite = async (req, res, next) => {
       .populate('members', 'firstName lastName displayName email avatarClass avatarUrl initials isOnline userCode')
       .populate('admin',   'firstName lastName displayName initials avatarClass');
 
+       
+try {
+  const io = getIO();
+  // Notify everyone already in the room that a new member joined
+  io.to(String(chat._id)).emit('group:memberJoined', {
+    chatId:  String(chat._id),
+    newMember: {
+      _id:         req.user._id,
+      displayName: req.user.displayName,
+      initials:    req.user.initials,
+      avatarClass: req.user.avatarClass,
+      isOnline:    true,
+    },
+    chat: populated,
+  });
+} catch (_) {}
+      
     res.json({ chat: populated, message: `Joined "${chat.name}" successfully` });
   } catch (err) {
     next(err);
