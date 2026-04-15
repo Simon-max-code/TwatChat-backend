@@ -5,6 +5,7 @@
 
 'use strict';
 
+const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const User    = require('../models/user');
 const Chat    = require('../models/chat');
 const Message = require('../models/message');
@@ -74,16 +75,53 @@ const getUser = async (req, res, next) => {
 // ── @PUT /api/users/profile  (protected) ──────────────────
 const updateProfile = async (req, res, next) => {
   try {
-    const { firstName, lastName, phone, avatarClass, avatarUrl, settings } = req.body;
-
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ── Parse body (may be JSON string when sent with FormData) ──
+    let body = req.body;
+    if (typeof body.settings === 'string') {
+      try { body.settings = JSON.parse(body.settings); } catch (_) {}
+    }
+
+    const { firstName, lastName, phone, avatarClass, settings } = body;
 
     if (firstName   !== undefined) user.firstName   = firstName;
     if (lastName    !== undefined) user.lastName    = lastName;
     if (phone       !== undefined) user.phone       = phone;
-    if (avatarClass !== undefined) user.avatarClass = avatarClass;
-    if (avatarUrl   !== undefined) user.avatarUrl   = avatarUrl;
+    if (avatarClass !== undefined) {
+      user.avatarClass = avatarClass;
+      // Clear uploaded avatar when switching back to a class avatar
+      if (user.avatarUrl) {
+        // Optionally delete old Cloudinary asset — fire and forget
+        if (user.avatarPublicId) {
+          deleteFromCloudinary(user.avatarPublicId).catch(() => {});
+        }
+        user.avatarUrl      = '';
+        user.avatarPublicId = '';
+      }
+    }
+
+    // ── Handle avatar file upload ──────────────────────────
+    if (req.file) {
+      // Delete old Cloudinary asset if exists
+      if (user.avatarPublicId) {
+        deleteFromCloudinary(user.avatarPublicId).catch(() => {});
+      }
+
+      const result = await uploadToCloudinary(req.file.buffer, {
+        folder:        'twatchat/avatars',
+        resource_type: 'image',
+        transformation: [
+          { width: 300, height: 300, crop: 'fill', gravity: 'face' },
+          { quality: 'auto', fetch_format: 'auto' },
+        ],
+      });
+
+      user.avatarUrl      = result.secure_url;
+      user.avatarPublicId = result.public_id;
+      user.avatarClass    = ''; // clear class when using photo
+    }
 
     if (settings) {
       user.settings = { ...user.settings.toObject(), ...settings };
@@ -92,8 +130,9 @@ const updateProfile = async (req, res, next) => {
     // Recompute displayName + initials
     const f = (user.firstName || '').trim();
     const l = (user.lastName  || '').trim();
-    user.displayName = f && l ? `${f} ${l}` : f || user.email.split('@')[0];
-    user.initials    = f && l
+    user.displayName = user.customDisplayName ||
+      (f && l ? `${f} ${l}` : f || user.email.split('@')[0]);
+    user.initials = f && l
       ? (f[0] + l[0]).toUpperCase()
       : f ? f.slice(0, 2).toUpperCase() : 'U';
 
@@ -102,17 +141,18 @@ const updateProfile = async (req, res, next) => {
     res.json({
       message: 'Profile updated',
       user: {
-        _id:         user._id,
-        firstName:   user.firstName,
-        lastName:    user.lastName,
-        displayName: user.displayName,
-        email:       user.email,
-        phone:       user.phone,
-        avatarClass: user.avatarClass,
-        avatarUrl:   user.avatarUrl,
-        initials:    user.initials,
-        userCode:    user.userCode,
-        settings:    user.settings,
+        _id:            user._id,
+        firstName:      user.firstName,
+        lastName:       user.lastName,
+        displayName:    user.displayName,
+        email:          user.email,
+        phone:          user.phone,
+        avatarClass:    user.avatarClass,
+        avatarUrl:      user.avatarUrl,
+        initials:       user.initials,
+        userCode:       user.userCode,
+        settings:       user.settings,
+        usernameChanges: user.usernameChanges,
       },
     });
   } catch (err) {

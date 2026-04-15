@@ -1,7 +1,4 @@
-/* ============================================================
-   TwatChat — routes/user.js
-   ============================================================ */
-
+// routes/user.js — replace existing file
 'use strict';
 
 const express = require('express');
@@ -17,26 +14,17 @@ const {
 } = require('../controllers/userCtrl');
 
 const { protect } = require('../middleware/auth');
+const upload      = require('../middleware/upload');
 
 router.use(protect);
 
-// @GET    /api/users               — all users (supports ?search=)
-router.get('/', getUsers);
+router.get('/',              getUsers);
+router.get('/find/:code',    findByCode);
+router.get('/:id',           getUser);
 
-// @GET    /api/users/find/:code    — find user by TC-XXXX-XX code
-// NOTE: must be before /:id so "find" isn't treated as an id
-router.get('/find/:code', findByCode);
-
-// @GET    /api/users/:id           — get single user
-router.get('/:id', getUser);
-
-// @PUT    /api/users/profile       — update own profile
-router.put('/profile', updateProfile);
-
-// @PUT    /api/users/username     — change display name (max 3 times)
-router.put('/username', updateUsername);
-
-// @DELETE /api/users/me            — delete own account
-router.delete('/me', deleteAccount);
+// ✅ Accept optional avatar file upload
+router.put('/profile',   upload.single('avatar'), updateProfile);
+router.put('/username',  updateUsername);
+router.delete('/me',     deleteAccount);
 
 module.exports = router;
