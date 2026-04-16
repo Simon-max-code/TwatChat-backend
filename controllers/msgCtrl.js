@@ -59,11 +59,14 @@ const pushToMembers = async (chat, message, senderId) => {
       chatId: String(chat._id),
     };
 
-    // Send to all members except the sender
+    // Send to all members except the sender, respecting notification settings
+    const recipients = await User.find({
+      _id: { $in: chat.members.filter(m => String(m) !== String(senderId)) },
+      'settings.notifications': { $ne: false }
+    }).select('_id');
+
     await Promise.allSettled(
-      chat.members
-        .filter(memberId => String(memberId) !== String(senderId))
-        .map(memberId => sendPushToUser(String(memberId), payload))
+      recipients.map(r => sendPushToUser(String(r._id), payload))
     );
   } catch (err) {
     console.error('pushToMembers error:', err.message);

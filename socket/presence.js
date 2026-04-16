@@ -11,27 +11,31 @@ module.exports = (io, socket) => {
 
   // ── User comes online ─────────────────────────────────────
   // Frontend emits this right after socket connects + auth
-  socket.on('presence:online', async ({ userId }) => {
+    socket.on('presence:online', async ({ userId }) => {
     try {
       if (!userId) return;
 
+      const user = await User.findById(userId);
+      if (!user) return;
+
       // Store socketId on user document
-      await User.findByIdAndUpdate(userId, {
-        isOnline: true,
-        socketId: socket.id,
-        lastSeen: new Date(),
-      });
+      user.isOnline = true;
+      user.socketId = socket.id;
+      user.lastSeen = new Date();
+      await user.save();
 
       // Join a personal room (userId) so others can target this user
       socket.join(String(userId));
 
-      // Broadcast to everyone that this user is online
-      socket.broadcast.emit('presence:update', {
-        userId,
-        isOnline: true,
-      });
+      // Broadcast to everyone if user allows online status
+      if (user.settings?.onlineStatus !== false) {
+        socket.broadcast.emit('presence:update', {
+          userId,
+          isOnline: true,
+        });
+      }
 
-      console.log(`🟢 User online: ${userId}`);
+      console.log(`🟢 User online: ${userId} (status: ${user.settings?.onlineStatus !== false ? 'visible' : 'hidden'})`);
     } catch (err) {
       console.error('socket presence:online error:', err.message);
     }
@@ -63,18 +67,22 @@ module.exports = (io, socket) => {
 
 // ── Shared helper ─────────────────────────────────────────
 const markOffline = async (userId, io) => {
-  await User.findByIdAndUpdate(userId, {
-    isOnline: false,
-    socketId: '',
-    lastSeen: new Date(),
-  });
+  const user = await User.findById(userId);
+  if (!user) return;
 
-  // Broadcast to everyone
-  io.emit('presence:update', {
-    userId,
-    isOnline: false,
-    lastSeen: new Date(),
-  });
+  user.isOnline = false;
+  user.socketId = '';
+  user.lastSeen = new Date();
+  await user.save();
 
-  console.log(`🔴 User offline: ${userId}`);
+  // Broadcast only if user allows online status
+  if (user.settings?.onlineStatus !== false) {
+    io.emit('presence:update', {
+      userId,
+      isOnline: false,
+      lastSeen: new Date(),
+    });
+  }
+
+  console.log(`🔴 User offline: ${userId} (status: ${user.settings?.onlineStatus !== false ? 'visible' : 'hidden'})`);
 };

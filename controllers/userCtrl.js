@@ -13,19 +13,28 @@ const Message = require('../models/message');
 // ── @GET /api/users  (protected) ──────────────────────────
 const getUsers = async (req, res, next) => {
   try {
-    const search = req.query.search
-      ? {
-          $or: [
-            { displayName: { $regex: req.query.search, $options: 'i' } },
-            { email:       { $regex: req.query.search, $options: 'i' } },
-          ],
-        }
-      : {};
+    let search = { _id: { $ne: req.user._id } };
+    
+    if (req.query.search) {
+      // If searching, respect 'searchable' setting
+      search = {
+        ...search,
+        'settings.searchable': { $ne: false },
+        $or: [
+          { displayName: { $regex: req.query.search, $options: 'i' } },
+          { email:       { $regex: req.query.search, $options: 'i' } },
+        ],
+      };
+    } else {
+      // If just listing, respect 'hiddenMode' setting
+      search = {
+        ...search,
+        'settings.hiddenMode': { $ne: true }
+      };
+    }
 
-    const users = await User.find({
-      ...search,
-      _id: { $ne: req.user._id },
-    }).select('_id firstName lastName displayName avatarClass avatarUrl initials isOnline lastSeen userCode');
+    const users = await User.find(search)
+      .select('_id firstName lastName displayName avatarClass avatarUrl initials isOnline lastSeen userCode settings');
 
     res.json({ users });
   } catch (err) {
@@ -40,8 +49,10 @@ const findByCode = async (req, res, next) => {
   try {
     const code = req.params.code.trim().toUpperCase();
 
-    const user = await User.findOne({ userCode: code })
-      .select('_id displayName firstName lastName avatarClass avatarUrl initials isOnline userCode');
+    const user = await User.findOne({ 
+      userCode: code,
+      'settings.searchable': { $ne: false }
+    }).select('_id displayName firstName lastName avatarClass avatarUrl initials isOnline userCode');
 
     if (!user) {
       return res.status(404).json({ message: 'No user found with that code' });
