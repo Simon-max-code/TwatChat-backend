@@ -105,25 +105,30 @@ const getPosts = async (req, res, next) => {
     let filter = { deleted: false };
 
     if (tab === 'friends') {
-      // For now — show posts from users who have chats with the current user
-      // A full "follow" system can be added later
-      const Chat = require('../models/chat');
-      const chats = await Chat.find({ members: req.user._id, isGroup: false });
-      const friendIds = [];
-      chats.forEach(c => {
-        c.members.forEach(m => {
-          if (String(m) !== String(req.user._id)) friendIds.push(m);
-        });
-      });
-      filter.author = { $in: friendIds };
-    } else {
-      // 'foryou' — public posts from everyone except hidden users
-      const hiddenUsers = await User.find({ 'settings.hiddenMode': true }).select('_id');
-      const hiddenIds   = hiddenUsers.map(u => u._id);
-      if (hiddenIds.length) {
-        filter.author = { $nin: hiddenIds };
-      }
-    }
+  const Chat = require('../models/chat');
+  const chats = await Chat.find({ members: req.user._id, isGroup: false });
+  const friendIds = [];
+  chats.forEach(c => {
+    c.members.forEach(m => {
+      if (String(m) !== String(req.user._id)) friendIds.push(m);
+    });
+  });
+  // Include the user's own posts in friends tab too
+  friendIds.push(req.user._id);
+  filter.author = { $in: friendIds };
+} else {
+  // 'foryou' — ALL posts from ALL users, no filter at all
+  // only exclude explicitly hidden users
+  const hiddenUsers = await User.find({
+    'settings.hiddenMode': true,
+    _id: { $ne: req.user._id }, // never hide your own posts from yourself
+  }).select('_id');
+  const hiddenIds = hiddenUsers.map(u => u._id);
+  if (hiddenIds.length) {
+    filter.author = { $nin: hiddenIds };
+  }
+  // if no hidden users, filter stays as { deleted: false } = show everything
+}
 
     const [posts, total] = await Promise.all([
       Post.find(filter)
