@@ -70,6 +70,7 @@ app.use('/api/auth',  require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
 app.use('/api/chats', require('./routes/chat'));
 app.use('/api/push',  require('./routes/push'));
+app.use('/api/posts', require('./routes/posts'));
 
 // ── 404 handler ────────────────────────────────────────────
 app.use((_req, res) => {
