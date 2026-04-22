@@ -61,4 +61,4 @@ musicPostSchema.index({ author: 1 });
 musicPostSchema.index({ spotifyId: 1 });
 musicPostSchema.index({ genre: 1 });
 
-module.exports = mongoose.model('MusicPost', musicPostSchema);v 
+module.exports = mongoose.model('MusicPost', musicPostSchema);
