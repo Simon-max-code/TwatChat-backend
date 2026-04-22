@@ -71,6 +71,7 @@ app.use('/api/users', require('./routes/user'));
 app.use('/api/chats', require('./routes/chat'));
 app.use('/api/push',  require('./routes/push'));
 app.use('/api/posts', require('./routes/posts'));
+app.use('/api/music', require('./routes/music'));
 
 // ── 404 handler ────────────────────────────────────────────
 app.use((_req, res) => {
