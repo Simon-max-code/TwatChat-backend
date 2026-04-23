@@ -64,7 +64,7 @@ const searchTracks = async (query, limit = 20) => {
   const url = new URL('https://api.spotify.com/v1/search');
   url.searchParams.set('q',     query);
   url.searchParams.set('type',  'track');
-  url.searchParams.set('limit', String(limit));
+url.searchParams.set('limit', String(Math.min(Math.max(parseInt(limit) || 20, 1), 50)));
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
@@ -105,7 +105,7 @@ const getRecommendations = async ({ seedTracks = [], seedGenres = [], limit = 20
   const token = await getSpotifyToken();
 
   const url = new URL('https://api.spotify.com/v1/recommendations');
-  url.searchParams.set('limit', String(limit));
+url.searchParams.set('limit', String(Math.min(Math.max(parseInt(limit) || 20, 1), 50)));
 
   if (seedTracks.length)  url.searchParams.set('seed_tracks',  seedTracks.slice(0, 5).join(','));
   if (seedGenres.length)  url.searchParams.set('seed_genres',  seedGenres.slice(0, 5).join(','));
