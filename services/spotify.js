@@ -41,10 +41,15 @@ const getSpotifyToken = async () => {
     body: 'grant_type=client_credentials',
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Spotify token fetch failed: ${err}`);
-  }
+  // ADD temporarily inside getSpotifyToken(), after the fetch:
+
+  console.log('Spotify token response status:', res.status);
+if (!res.ok) {
+  const errText = await res.text();
+  console.error('Spotify token error:', errText);
+  throw new Error(`Spotify token fetch failed: ${errText}`);
+}
+
 
   const data = await res.json();
   _accessToken = data.access_token;
@@ -54,6 +59,9 @@ const getSpotifyToken = async () => {
   return _accessToken;
 };
 
+
+// ADD temporarily at the top of searchTracks(), remove after confirming:
+console.log('Spotify search — query:', query, '| limit:', limit, '| type:', typeof limit);
 /**
  * Search Spotify for tracks.
  * Returns an array of normalised track objects.
