@@ -41,29 +41,19 @@ const getSpotifyToken = async () => {
     body: 'grant_type=client_credentials',
   });
 
-  // ADD temporarily inside getSpotifyToken(), after the fetch:
-
-  console.log('Spotify token response status:', res.status);
-if (!res.ok) {
-  const errText = await res.text();
-  console.error('Spotify token error:', errText);
-  throw new Error(`Spotify token fetch failed: ${errText}`);
-}
-
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Spotify token fetch failed: ${errText}`);
+  }
 
   const data = await res.json();
   _accessToken = data.access_token;
   _expiresAt   = now + data.expires_in * 1000; // expires_in is in seconds
 
-  console.log('🎵 Spotify token refreshed');
   return _accessToken;
 };
 
 
-// ADD temporarily at the top of searchTracks(), remove after confirming:
-const searchSpotify = async (query, limit = 10) => {
-  console.log('Spotify search — query:', query, '| limit:', limit, '| type:', typeof limit);
-}
 /**
  * Search Spotify for tracks.
  * Returns an array of normalised track objects.
@@ -71,13 +61,14 @@ const searchSpotify = async (query, limit = 10) => {
 const searchTracks = async (query, limit = 20) => {
   const token = await getSpotifyToken();
 
-  const safeLimit = Math.min(Math.max(Math.floor(Number(limit)), 1), 50);
+  const safeLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 50);
 
-const url = new URL('https://api.spotify.com/v1/search');
-url.searchParams.append('q',      query);
-url.searchParams.append('type',   'track');
-url.searchParams.append('limit',  safeLimit);
-url.searchParams.append('market', 'US');
+  const url = new URL('https://api.spotify.com/v1/search');
+  url.searchParams.set('q',      query);
+  url.searchParams.set('type',   'track');
+  url.searchParams.set('limit',  safeLimit.toString());
+  url.searchParams.set('market', 'US');
+
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -118,9 +109,9 @@ const getRecommendations = async ({ seedTracks = [], seedGenres = [], limit = 20
   const token = await getSpotifyToken();
 
   const url = new URL('https://api.spotify.com/v1/recommendations');
-const safeLimit = Math.min(Math.max(Math.floor(Number(limit)), 1), 100);
-url.searchParams.append('limit',  safeLimit);
-url.searchParams.append('market', 'US');
+  const safeLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 50);
+  url.searchParams.set('limit',  safeLimit.toString());
+  url.searchParams.set('market', 'US');
 
   if (seedTracks.length)  url.searchParams.set('seed_tracks',  seedTracks.slice(0, 5).join(','));
   if (seedGenres.length)  url.searchParams.set('seed_genres',  seedGenres.slice(0, 5).join(','));
