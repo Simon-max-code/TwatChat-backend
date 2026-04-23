@@ -61,7 +61,9 @@ if (!res.ok) {
 
 
 // ADD temporarily at the top of searchTracks(), remove after confirming:
-console.log('Spotify search — query:', query, '| limit:', limit, '| type:', typeof limit);
+const searchSpotify = async (query, limit = 10) => {
+  console.log('Spotify search — query:', query, '| limit:', limit, '| type:', typeof limit);
+}
 /**
  * Search Spotify for tracks.
  * Returns an array of normalised track objects.
