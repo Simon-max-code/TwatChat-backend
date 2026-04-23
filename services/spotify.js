@@ -71,14 +71,17 @@ const searchSpotify = async (query, limit = 10) => {
 const searchTracks = async (query, limit = 20) => {
   const token = await getSpotifyToken();
 
-  const url = new URL('https://api.spotify.com/v1/search');
-  url.searchParams.set('q',     query);
-  url.searchParams.set('type',  'track');
-url.searchParams.set('limit', String(Math.min(Math.max(parseInt(limit) || 20, 1), 50)));
+  const safeLimit = Math.min(Math.max(Math.floor(Number(limit)), 1), 50);
 
+const url = new URL('https://api.spotify.com/v1/search');
+url.searchParams.append('q',      query);
+url.searchParams.append('type',   'track');
+url.searchParams.append('limit',  safeLimit);
+url.searchParams.append('market', 'US');
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
+
 
   if (!res.ok) {
     const err = await res.text();
@@ -115,7 +118,9 @@ const getRecommendations = async ({ seedTracks = [], seedGenres = [], limit = 20
   const token = await getSpotifyToken();
 
   const url = new URL('https://api.spotify.com/v1/recommendations');
-url.searchParams.set('limit', String(Math.min(Math.max(parseInt(limit) || 20, 1), 50)));
+const safeLimit = Math.min(Math.max(Math.floor(Number(limit)), 1), 100);
+url.searchParams.append('limit',  safeLimit);
+url.searchParams.append('market', 'US');
 
   if (seedTracks.length)  url.searchParams.set('seed_tracks',  seedTracks.slice(0, 5).join(','));
   if (seedGenres.length)  url.searchParams.set('seed_genres',  seedGenres.slice(0, 5).join(','));
