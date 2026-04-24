@@ -59,6 +59,11 @@ const getSpotifyToken = async () => {
  * Returns an array of normalised track objects.
  */
 const searchTracks = async (query, limit = 20) => {
+
+    // 🔥 DEBUG 1: raw input coming into function
+  console.log("QUERY RAW:", JSON.stringify(query));
+  console.log("QUERY LENGTH:", query?.length);
+
     console.log("LIMIT DEBUG RAW:", limit);
   console.log("LIMIT TYPE:", typeof limit);
   console.log("QUERY DEBUG:", query);
@@ -68,11 +73,17 @@ const searchTracks = async (query, limit = 20) => {
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
   const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${safeLimit}&market=US`;
+  // 🔥 DEBUG 2: before building URL
+  console.log("SAFE LIMIT:", safeLimit);
+  console.log("ENCODED QUERY:", encodeURIComponent(query));
 
+    console.log("FINAL SPOTIFY URL:", url);
+    
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
-
+  // 🔥 DEBUG 4: response status
+  console.log("SPOTIFY STATUS:", res.status);
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Spotify search failed (${res.status}): ${err}`);
