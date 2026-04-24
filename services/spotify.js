@@ -91,18 +91,14 @@ const spotifyGet = async (url, params = {}, retried = false) => {
   }
 };
 
-// ── Search tracks ──────────────────────────────────────────
 const searchTracks = async (query, limit = 20) => {
   if (!query || !query.trim()) throw new Error('Search query cannot be empty');
 
   const token = await getSpotifyToken();
 
-  // Bare minimum request — no market, no limit, just q and type
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query.trim())}&type=track`;
-
-  console.log(`[Spotify] Raw URL: ${url}`);
-  console.log(`[Spotify] Token length: ${token.length}`);
-  console.log(`[Spotify] Token preview: ${token.slice(0, 20)}...`);
+  // Build URL manually — axios params serialization was causing Spotify to reject limit
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query.trim())}&type=track&limit=${safeLimit}&market=US`;
 
   try {
     const { data } = await axios.get(url, {
@@ -112,15 +108,19 @@ const searchTracks = async (query, limit = 20) => {
       },
     });
 
-    console.log(`[Spotify] Success! Got ${data.tracks?.items?.length} tracks`);
     return normaliseTracks(data.tracks?.items || []);
 
   } catch (err) {
-    // Log the FULL Spotify error response
-    console.error('[Spotify] Full error response:', JSON.stringify(err.response?.data));
-    console.error('[Spotify] Status:', err.response?.status);
-    console.error('[Spotify] Headers sent:', err.config?.headers);
-    throw new Error(`Spotify API error (${err.response?.status}): ${err.response?.data?.error?.message}`);
+    const status = err.response?.status;
+
+    // 401 = token expired mid-flight — refresh once and retry
+    if (status === 401) {
+      _accessToken = null;
+      return searchTracks(query, limit); // retry once with fresh token
+    }
+
+    const msg = err.response?.data?.error?.message || err.message;
+    throw new Error(`Spotify search failed: ${msg}`);
   }
 };
 
