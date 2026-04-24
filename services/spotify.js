@@ -96,9 +96,8 @@ const searchTracks = async (query, limit = 20) => {
 
   const token = await getSpotifyToken();
 
-  // Build URL manually — axios params serialization was causing Spotify to reject limit
-  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query.trim())}&type=track&limit=${safeLimit}&market=US`;
+  // NOTE: do NOT add &limit= — Spotify rejects it with these credentials
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query.trim())}&type=track`;
 
   try {
     const { data } = await axios.get(url, {
@@ -113,10 +112,9 @@ const searchTracks = async (query, limit = 20) => {
   } catch (err) {
     const status = err.response?.status;
 
-    // 401 = token expired mid-flight — refresh once and retry
     if (status === 401) {
       _accessToken = null;
-      return searchTracks(query, limit); // retry once with fresh token
+      return searchTracks(query, limit);
     }
 
     const msg = err.response?.data?.error?.message || err.message;
