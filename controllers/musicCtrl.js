@@ -10,11 +10,12 @@ const MusicPost = require('../models/musicPost');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const { getIO } = require('../config/socket');
 
+
 // ── @GET /api/music/search?q=&limit= ──────────────────────
 const search = async (req, res, next) => {
   try {
     const { q } = req.query;
-    const limit = parseInt(req.query.limit, 10) || 20;
+    const limit  = parseInt(req.query.limit, 10) || 20;
 
     if (!q || !q.trim()) {
       return res.status(400).json({ message: 'Search query is required' });
@@ -24,14 +25,9 @@ const search = async (req, res, next) => {
     return res.json({ tracks });
 
   } catch (err) {
-    console.error('🔥 FULL MUSIC SEARCH ERROR:', err);
-
-    return res.status(500).json({
-      message: err.message,
-      stack: err.stack,
-    });
+    next(err);
   }
-};;
+};
 
 // ── @GET /api/music/recommendations?genres=&seeds= ────────
 const recommendations = async (req, res, next) => {

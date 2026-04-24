@@ -1,201 +1,181 @@
 /* ============================================================
    TwatChat — services/spotify.js
    Spotify Client Credentials flow
-   - Auto-refreshes token before expiry
-   - Never exposes client secret to frontend
+   - Uses axios (reliable header handling on all Node versions)
+   - Auto-refreshes token 60s before expiry
+   - Retries once on 401 (token race condition guard)
    ============================================================ */
 
 'use strict';
 
-let _accessToken  = null;
-let _expiresAt    = 0;   // Unix ms timestamp
+const axios = require('axios');
 
-/**
- * Returns a valid Spotify access token.
- * Uses cached token if still valid; fetches a fresh one otherwise.
- */
-const getSpotifyToken = async () => {
+let _accessToken = null;
+let _expiresAt   = 0;        // Unix ms
+
+// ── Fetch (or return cached) Spotify access token ─────────
+const getSpotifyToken = async (forceRefresh = false) => {
   const now = Date.now();
 
-  // Return cached token if it has > 60s left
-  if (_accessToken && now < _expiresAt - 60_000) {
+  if (!forceRefresh && _accessToken && now < _expiresAt - 60_000) {
     return _accessToken;
   }
 
   const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET } = process.env;
 
   if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-    throw new Error('Spotify credentials not configured');
+    throw new Error('Spotify credentials not configured in environment variables');
   }
 
   const credentials = Buffer.from(
     `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
   ).toString('base64');
 
-  const res = await fetch('https://accounts.spotify.com/api/token', {
-    method:  'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type':  'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
+  try {
+    const { data } = await axios.post(
+      'https://accounts.spotify.com/api/token',
+      'grant_type=client_credentials',   // x-www-form-urlencoded body as string
+      {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type':  'application/x-www-form-urlencoded',
+        },
+      }
+    );
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Spotify token fetch failed: ${errText}`);
+    _accessToken = data.access_token.trim();   // trim any stray whitespace
+    _expiresAt   = now + data.expires_in * 1000;
+
+    console.log(`[Spotify] Token refreshed. Expires in ${data.expires_in}s`);
+    return _accessToken;
+
+  } catch (err) {
+    const msg = err.response?.data?.error_description || err.message;
+    throw new Error(`Spotify token fetch failed: ${msg}`);
   }
-
-  const data = await res.json();
-  console.log("TOKEN LENGTH:", data.access_token?.length);
-console.log("EXPIRES IN:", data.expires_in);
-console.log("TOKEN START:", data.access_token?.slice(0, 10));
-  _accessToken = data.access_token;
-  _expiresAt   = now + data.expires_in * 1000; // expires_in is in seconds
-
-  return _accessToken;
 };
 
-
-/**
- * Search Spotify for tracks.
- * Returns an array of normalised track objects.
- */
-const searchTracks = async (query, limit = 20) => {
-
-    // 🔥 DEBUG 1: raw input coming into function
-  console.log("QUERY RAW:", JSON.stringify(query));
-  console.log("QUERY LENGTH:", query?.length);
-
-    console.log("LIMIT DEBUG RAW:", limit);
-  console.log("LIMIT TYPE:", typeof limit);
-  console.log("QUERY DEBUG:", query);
+// ── Shared axios instance for Spotify API calls ───────────
+// Building a helper so headers are always correct, no repetition
+const spotifyGet = async (url, params = {}, retried = false) => {
   const token = await getSpotifyToken();
 
-  // Ensure limit is always a valid integer between 1-50
+  try {
+    const { data } = await axios.get(url, {
+      params,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept':        'application/json',
+      },
+    });
+    return data;
+
+  } catch (err) {
+    const status = err.response?.status;
+
+    // 401 = token expired mid-flight — refresh once and retry
+    if (status === 401 && !retried) {
+      console.warn('[Spotify] Got 401 — refreshing token and retrying…');
+      _accessToken = null;   // force refresh
+      return spotifyGet(url, params, true);
+    }
+
+    const msg = err.response?.data?.error?.message || err.message;
+    throw new Error(`Spotify API error (${status}): ${msg}`);
+  }
+};
+
+// ── Search tracks ──────────────────────────────────────────
+const searchTracks = async (query, limit = 20) => {
+  if (!query || !query.trim()) throw new Error('Search query cannot be empty');
+
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${safeLimit}&market=US`;
-  // 🔥 DEBUG 2: before building URL
-  console.log("SAFE LIMIT:", safeLimit);
-  console.log("ENCODED QUERY:", encodeURIComponent(query));
+  console.log(`[Spotify] Searching: "${query}" limit=${safeLimit}`);
 
-    console.log("FINAL SPOTIFY URL:", url);
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+  const data = await spotifyGet('https://api.spotify.com/v1/search', {
+    q:      query.trim(),
+    type:   'track',
+    limit:  safeLimit,
+    market: 'US',
   });
-  // 🔥 DEBUG 4: response status
-  console.log("SPOTIFY STATUS:", res.status);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Spotify search failed (${res.status}): ${err}`);
-  }
 
-  const data = await res.json();
   return normaliseTracks(data.tracks?.items || []);
 };
-/**
- * Get a single track by Spotify ID.
- */
-const getTrack = async (trackId) => {
-  const token = await getSpotifyToken();
 
-  const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+// ── Get single track ───────────────────────────────────────
+const getTrack = async (trackId) => {
+  if (!trackId) throw new Error('Track ID required');
+
+  const data = await spotifyGet(`https://api.spotify.com/v1/tracks/${trackId}`, {
+    market: 'US',
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Spotify track fetch failed: ${err}`);
-  }
-
-  const data = await res.json();
   return normaliseTrack(data);
 };
 
-/**
- * Get recommendations based on seed tracks/artists/genres.
- */
+// ── Get recommendations ────────────────────────────────────
 const getRecommendations = async ({ seedTracks = [], seedGenres = [], limit = 20 } = {}) => {
-  const token = await getSpotifyToken();
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
-  const url = new URL('https://api.spotify.com/v1/recommendations');
-  const safeLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 50);
-  url.searchParams.set('limit',  safeLimit.toString());
-  url.searchParams.set('market', 'US');
+  const params = {
+    limit:  safeLimit,
+    market: 'US',
+  };
 
-  if (seedTracks.length)  url.searchParams.set('seed_tracks',  seedTracks.slice(0, 5).join(','));
-  if (seedGenres.length)  url.searchParams.set('seed_genres',  seedGenres.slice(0, 5).join(','));
+  if (seedTracks.length) params.seed_tracks  = seedTracks.slice(0, 5).join(',');
+  if (seedGenres.length) params.seed_genres  = seedGenres.slice(0, 5).join(',');
+
+  // Fallback seeds when none provided
   if (!seedTracks.length && !seedGenres.length) {
-    // Default seeds when nothing is provided
-    url.searchParams.set('seed_genres', 'pop,hip-hop,r-n-b');
+    params.seed_genres = 'pop,hip-hop,r-n-b';
   }
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const data = await spotifyGet(
+    'https://api.spotify.com/v1/recommendations',
+    params
+  );
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Spotify recommendations failed: ${err}`);
-  }
-
-  const data = await res.json();
   return normaliseTracks(data.tracks || []);
 };
 
-/**
- * Get available genre seeds from Spotify.
- */
+// ── Get available genre seeds ──────────────────────────────
 const getGenres = async () => {
-  const token = await getSpotifyToken();
-
-  const res = await fetch(
-    'https://api.spotify.com/v1/recommendations/available-genre-seeds',
-    { headers: { Authorization: `Bearer ${token}` } }
+  const data = await spotifyGet(
+    'https://api.spotify.com/v1/recommendations/available-genre-seeds'
   );
-
-  if (!res.ok) throw new Error('Failed to fetch genres');
-  const data = await res.json();
   return data.genres || [];
 };
 
 // ── Normalisers ────────────────────────────────────────────
-
 function normaliseTrack(t) {
   if (!t) return null;
   return {
-    spotifyId:    t.id,
-    title:        t.name,
-    artist:       t.artists?.map(a => a.name).join(', ') || 'Unknown',
-    artistId:     t.artists?.[0]?.id || null,
-    album:        t.album?.name || '',
-    albumArt:     t.album?.images?.[0]?.url || '',    // largest image
-    albumArtSm:   t.album?.images?.[2]?.url || '',    // smallest (64px)
-    duration:     formatDuration(t.duration_ms),
-    durationMs:   t.duration_ms,
-    previewUrl:   t.preview_url || null,              // 30s MP3 or null
-    spotifyUrl:   t.external_urls?.spotify || null,
-    explicit:     t.explicit || false,
-    popularity:   t.popularity || 0,
-    releaseDate:  t.album?.release_date || '',
+    spotifyId:   t.id,
+    title:       t.name,
+    artist:      t.artists?.map(a => a.name).join(', ') || 'Unknown',
+    artistId:    t.artists?.[0]?.id || null,
+    album:       t.album?.name || '',
+    albumArt:    t.album?.images?.[0]?.url || '',
+    albumArtSm:  t.album?.images?.[2]?.url || '',
+    duration:    formatDuration(t.duration_ms),
+    durationMs:  t.duration_ms,
+    previewUrl:  t.preview_url || null,
+    spotifyUrl:  t.external_urls?.spotify || null,
+    explicit:    t.explicit || false,
+    popularity:  t.popularity || 0,
+    releaseDate: t.album?.release_date || '',
   };
 }
 
 function normaliseTracks(items) {
-  return items
-    .filter(Boolean)
-    .map(normaliseTrack)
-    .filter(Boolean);
+  return items.filter(Boolean).map(normaliseTrack).filter(Boolean);
 }
 
 function formatDuration(ms) {
   if (!ms) return '0:00';
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 module.exports = {
