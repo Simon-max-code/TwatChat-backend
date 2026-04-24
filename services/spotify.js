@@ -59,6 +59,9 @@ const getSpotifyToken = async () => {
  * Returns an array of normalised track objects.
  */
 const searchTracks = async (query, limit = 20) => {
+    console.log("LIMIT DEBUG RAW:", limit);
+  console.log("LIMIT TYPE:", typeof limit);
+  console.log("QUERY DEBUG:", query);
   const token = await getSpotifyToken();
 
   // Ensure limit is always a valid integer between 1-50
