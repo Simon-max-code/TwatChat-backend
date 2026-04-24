@@ -25,7 +25,9 @@ const search = async (req, res, next) => {
   } catch (err) {
     // Surface Spotify errors clearly instead of generic 500
     console.error('Music search error:', err.message);
-    next(err);
+    res.status(500).json({
+  error: err.message,
+});
   }
 };
 
