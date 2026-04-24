@@ -56,27 +56,33 @@ const getSpotifyToken = async (forceRefresh = false) => {
 };
 
 // ── Shared axios instance for Spotify API calls ───────────
-// Building a helper so headers are always correct, no repetition
+// ── Shared request helper — URL built manually to avoid param serialization issues ──
 const spotifyGet = async (url, params = {}, retried = false) => {
   const token = await getSpotifyToken();
 
+  // Build query string manually — no axios params serialization
+  const queryString = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+
+  const fullUrl = queryString ? `${url}?${queryString}` : url;
+
   try {
-    const { data } = await axios.get(url, {
-      params,
+    const { data } = await axios.get(fullUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept':        'application/json',
       },
+      // NO params key here — already in URL
     });
     return data;
 
   } catch (err) {
     const status = err.response?.status;
 
-    // 401 = token expired mid-flight — refresh once and retry
     if (status === 401 && !retried) {
       console.warn('[Spotify] Got 401 — refreshing token and retrying…');
-      _accessToken = null;   // force refresh
+      _accessToken = null;
       return spotifyGet(url, params, true);
     }
 
@@ -89,17 +95,17 @@ const spotifyGet = async (url, params = {}, retried = false) => {
 const searchTracks = async (query, limit = 20) => {
   if (!query || !query.trim()) throw new Error('Search query cannot be empty');
 
+  // Hard-clamp limit — Spotify accepts 1-50 only
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
   console.log(`[Spotify] Searching: "${query}" limit=${safeLimit}`);
 
-  // REPLACE WITH
-const data = await spotifyGet('https://api.spotify.com/v1/search', {
-  q:      query.trim(),
-  type:   'track',
-  limit:  String(safeLimit),
-  market: 'US',
-});
+  const data = await spotifyGet('https://api.spotify.com/v1/search', {
+    q:      query.trim(),
+    type:   'track',
+    limit:  safeLimit,   // will be encoded as string in URL via encodeURIComponent
+    market: 'US',
+  });
 
   return normaliseTracks(data.tracks?.items || []);
 };
