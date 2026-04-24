@@ -93,12 +93,13 @@ const searchTracks = async (query, limit = 20) => {
 
   console.log(`[Spotify] Searching: "${query}" limit=${safeLimit}`);
 
-  const data = await spotifyGet('https://api.spotify.com/v1/search', {
-    q:      query.trim(),
-    type:   'track',
-    limit:  safeLimit,
-    market: 'US',
-  });
+  // REPLACE WITH
+const data = await spotifyGet('https://api.spotify.com/v1/search', {
+  q:      query.trim(),
+  type:   'track',
+  limit:  String(safeLimit),
+  market: 'US',
+});
 
   return normaliseTracks(data.tracks?.items || []);
 };
@@ -118,10 +119,11 @@ const getTrack = async (trackId) => {
 const getRecommendations = async ({ seedTracks = [], seedGenres = [], limit = 20 } = {}) => {
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
-  const params = {
-    limit:  safeLimit,
-    market: 'US',
-  };
+ // REPLACE WITH
+const params = {
+  limit:  String(safeLimit),
+  market: 'US',
+};
 
   if (seedTracks.length) params.seed_tracks  = seedTracks.slice(0, 5).join(',');
   if (seedGenres.length) params.seed_genres  = seedGenres.slice(0, 5).join(',');
