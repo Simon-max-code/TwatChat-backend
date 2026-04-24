@@ -21,15 +21,17 @@ const search = async (req, res, next) => {
     }
 
     const tracks = await searchTracks(q.trim(), limit);
-    res.json({ tracks });
+    return res.json({ tracks });
+
   } catch (err) {
-    // Surface Spotify errors clearly instead of generic 500
-    console.error('Music search error:', err.message);
-    res.status(500).json({
-  error: err.message,
-});
+    console.error('🔥 FULL MUSIC SEARCH ERROR:', err);
+
+    return res.status(500).json({
+      message: err.message,
+      stack: err.stack,
+    });
   }
-};
+};;
 
 // ── @GET /api/music/recommendations?genres=&seeds= ────────
 const recommendations = async (req, res, next) => {
