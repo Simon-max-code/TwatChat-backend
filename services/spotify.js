@@ -47,6 +47,9 @@ const getSpotifyToken = async () => {
   }
 
   const data = await res.json();
+  console.log("TOKEN LENGTH:", data.access_token?.length);
+console.log("EXPIRES IN:", data.expires_in);
+console.log("TOKEN START:", data.access_token?.slice(0, 10));
   _accessToken = data.access_token;
   _expiresAt   = now + data.expires_in * 1000; // expires_in is in seconds
 
@@ -78,7 +81,7 @@ const searchTracks = async (query, limit = 20) => {
   console.log("ENCODED QUERY:", encodeURIComponent(query));
 
     console.log("FINAL SPOTIFY URL:", url);
-    
+
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
