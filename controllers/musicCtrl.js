@@ -37,12 +37,11 @@ const recommendations = async (req, res, next) => {
     const seedGenres = genres ? genres.split(',').map(g => g.trim()).filter(Boolean) : [];
     const seedTracks = seeds  ? seeds.split(',').map(s => s.trim()).filter(Boolean)  : [];
 
- 
-const tracks = await getRecommendations({
-  seedGenres,
-  seedTracks,
-  limit: Math.min(Math.max(parseInt(limit) || 20, 1), 50),
-});
+    const tracks = await getRecommendations({
+      seedGenres,
+      seedTracks,
+      limit,
+    });
 
     res.json({ tracks });
   } catch (err) {
