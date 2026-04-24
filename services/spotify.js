@@ -95,19 +95,33 @@ const spotifyGet = async (url, params = {}, retried = false) => {
 const searchTracks = async (query, limit = 20) => {
   if (!query || !query.trim()) throw new Error('Search query cannot be empty');
 
-  // Hard-clamp limit — Spotify accepts 1-50 only
-  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+  const token = await getSpotifyToken();
 
-  console.log(`[Spotify] Searching: "${query}" limit=${safeLimit}`);
+  // Bare minimum request — no market, no limit, just q and type
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query.trim())}&type=track`;
 
-  const data = await spotifyGet('https://api.spotify.com/v1/search', {
-    q:      query.trim(),
-    type:   'track',
-    limit:  safeLimit,   // will be encoded as string in URL via encodeURIComponent
-    market: 'US',
-  });
+  console.log(`[Spotify] Raw URL: ${url}`);
+  console.log(`[Spotify] Token length: ${token.length}`);
+  console.log(`[Spotify] Token preview: ${token.slice(0, 20)}...`);
 
-  return normaliseTracks(data.tracks?.items || []);
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    console.log(`[Spotify] Success! Got ${data.tracks?.items?.length} tracks`);
+    return normaliseTracks(data.tracks?.items || []);
+
+  } catch (err) {
+    // Log the FULL Spotify error response
+    console.error('[Spotify] Full error response:', JSON.stringify(err.response?.data));
+    console.error('[Spotify] Status:', err.response?.status);
+    console.error('[Spotify] Headers sent:', err.config?.headers);
+    throw new Error(`Spotify API error (${err.response?.status}): ${err.response?.data?.error?.message}`);
+  }
 };
 
 // ── Get single track ───────────────────────────────────────
