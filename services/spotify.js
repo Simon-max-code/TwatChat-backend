@@ -71,27 +71,23 @@ const searchSpotify = async (query, limit = 10) => {
 const searchTracks = async (query, limit = 20) => {
   const token = await getSpotifyToken();
 
-  const safeLimit = Math.min(Math.max(Math.floor(Number(limit)), 1), 50);
+  // Ensure limit is always a valid integer between 1-50
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
 
-const url = new URL('https://api.spotify.com/v1/search');
-url.searchParams.append('q',      query);
-url.searchParams.append('type',   'track');
-url.searchParams.append('limit',  safeLimit);
-url.searchParams.append('market', 'US');
-  const res = await fetch(url.toString(), {
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${safeLimit}&market=US`;
+
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Spotify search failed: ${err}`);
+    throw new Error(`Spotify search failed (${res.status}): ${err}`);
   }
 
   const data = await res.json();
   return normaliseTracks(data.tracks?.items || []);
 };
-
 /**
  * Get a single track by Spotify ID.
  */

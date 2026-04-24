@@ -13,15 +13,18 @@ const { getIO } = require('../config/socket');
 // ── @GET /api/music/search?q=&limit= ──────────────────────
 const search = async (req, res, next) => {
   try {
-    const { q, limit = 20 } = req.query;
+    const { q } = req.query;
+    const limit = parseInt(req.query.limit, 10) || 20;
 
     if (!q || !q.trim()) {
       return res.status(400).json({ message: 'Search query is required' });
     }
 
-const tracks = await searchTracks(q.trim(), Math.min(Math.max(parseInt(limit) || 20, 1), 50));
+    const tracks = await searchTracks(q.trim(), limit);
     res.json({ tracks });
   } catch (err) {
+    // Surface Spotify errors clearly instead of generic 500
+    console.error('Music search error:', err.message);
     next(err);
   }
 };
