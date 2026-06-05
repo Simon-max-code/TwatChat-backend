@@ -65,6 +65,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ── Keep-alive endpoint ─────────────────────────────────────
+// Cron-job.org or any uptime monitor can ping this every 14 minutes
+app.get('/keepalive', (_req, res) => {
+  res.status(200).json({ status: 'alive', timestamp: new Date().toISOString() });
+});
+
 // ── API Routes ─────────────────────────────────────────────
 app.use('/api/auth',  require('./routes/auth'));
 app.use('/api/users', require('./routes/user'));
