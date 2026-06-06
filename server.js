@@ -77,7 +77,9 @@ app.use('/api/users', require('./routes/user'));
 app.use('/api/chats', require('./routes/chat'));
 app.use('/api/push',  require('./routes/push'));
 app.use('/api/posts', require('./routes/posts'));
-app.use('/api/music', require('./routes/music'));app.use('/api/spotify', require('./routes/spotifyConnect'));
+app.use('/api/music', require('./routes/music'));
+app.use('/api/spotify', require('./routes/spotifyConnect'));
+
 // ── 404 handler ────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ message: 'Route not found' });

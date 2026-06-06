@@ -4,12 +4,13 @@ const User = require('../models/user');
 const Chat = require('../models/chat');
 const { getNowPlaying } = require('./spotifyAuth');
 
-const _lastTrack = new Map();
+const _lastTrack = new Map(); // userId → spotifyId|null|'paused'
 
 const startNowPlayingPoller = (io) => {
-  setInterval(async () => {
+  const poll = async () => {
     try {
       const users = await User.find({
+        isOnline:                 true,
         'spotify.connected':      true,
         'spotify.shareNowPlaying': true,
       }).select('_id');
@@ -18,41 +19,32 @@ const startNowPlayingPoller = (io) => {
         const userId = String(u._id);
         try {
           const track = await getNowPlaying(userId);
-          const key   = track?.spotifyId ?? null;
+          const key = track ? `${track.spotifyId}:${track.isPlaying}` : null;
 
           if (_lastTrack.get(userId) === key) return;
           _lastTrack.set(userId, key);
 
-          const chats = await Chat.find({
-            isGroup: false,
-            members: u._id,
-          }).select('members');
-
+          const chats = await Chat.find({ isGroup: false, members: u._id }).select('members');
           const friendIds = new Set();
-          chats.forEach((c) => {
-            c.members.forEach((m) => {
-              if (String(m) !== userId) friendIds.add(String(m));
-            });
-          });
+          chats.forEach((c) => c.members.forEach((m) => {
+            if (String(m) !== userId) friendIds.add(String(m));
+          }));
 
-          friendIds.forEach((friendId) => {
-            io.to(friendId).emit('spotify:nowPlaying', {
-              userId,
-              track,
-            });
-          });
+          const payload = { userId, track };
+          io.to(userId).emit('spotify:nowPlaying', payload);
+          friendIds.forEach((fid) => io.to(fid).emit('spotify:nowPlaying', payload));
 
-          io.to(userId).emit('spotify:nowPlaying', { userId, track });
-        } catch (err) {
-          console.error('[NowPlayingPoller user]', err.message);
-        }
+        } catch (_) {}
       }));
     } catch (err) {
       console.error('[NowPlayingPoller]', err.message);
+    } finally {
+      setTimeout(poll, 3000);
     }
-  }, 10_000);
+  };
 
-  console.log('🎵 Spotify now-playing poller started');
+  poll();
+  console.log('🎵 Spotify now-playing poller started (3s)');
 };
 
 module.exports = { startNowPlayingPoller };

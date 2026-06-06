@@ -7,6 +7,8 @@ const CLIENT_ID     = () => process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = () => process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI  = () => process.env.SPOTIFY_REDIRECT_URI;
 
+const _tokenCache = new Map(); // userId -> { token, expiresAt }
+
 // ── Exchange code for tokens ─────────────────────────────
 const exchangeCode = async (code) => {
   const creds = Buffer.from(`${CLIENT_ID()}:${CLIENT_SECRET()}`).toString('base64');
@@ -48,27 +50,40 @@ const refreshUserToken = async (userId) => {
     }
   );
 
-  user.spotify.accessToken = data.access_token;
-  user.spotify.expiresAt   = Date.now() + data.expires_in * 1000;
+  const accessToken = data.access_token;
+  const expiresAt = Date.now() + data.expires_in * 1000;
+
+  user.spotify.accessToken = accessToken;
+  user.spotify.expiresAt   = expiresAt;
   if (data.refresh_token) user.spotify.refreshToken = data.refresh_token;
   await user.save();
 
-  return data.access_token;
+  _tokenCache.set(userId, { token: accessToken, expiresAt });
+
+  return accessToken;
 };
 
 // ── Get a valid access token (auto-refresh if needed) ─────
 const getValidToken = async (userId) => {
+  const cached = _tokenCache.get(userId);
+  if (cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+
   const user = await User.findById(userId).select('spotify');
   if (!user?.spotify?.connected) return null;
 
-  if (!user.spotify.accessToken) return null;
+  let token = user.spotify.accessToken;
+  let expiresAt = user.spotify.expiresAt;
 
-  // Refresh if expired or close to expiry
-  if (!user.spotify.expiresAt || Date.now() >= user.spotify.expiresAt - 30000) {
-    return await refreshUserToken(userId);
+  if (!token) return null;
+
+  if (!expiresAt || Date.now() >= expiresAt - 60_000) {
+    token = await refreshUserToken(userId);
+    const updated = await User.findById(userId).select('spotify');
+    expiresAt = updated.spotify.expiresAt;
   }
 
-  return user.spotify.accessToken;
+  _tokenCache.set(userId, { token, expiresAt });
+  return token;
 };
 
 // ── Get now playing track for a connected user ────────────
