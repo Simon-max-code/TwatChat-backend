@@ -56,6 +56,16 @@ const userSchema = new mongoose.Schema(
       searchable:    { type: Boolean, default: true  },
       hiddenMode:    { type: Boolean, default: false },
     },
+
+    // ── Spotify Connect ─────────────────────────────────────
+    spotify: {
+      accessToken:    { type: String, default: '' },
+      refreshToken:   { type: String, default: '' },
+      expiresAt:      { type: Number, default: 0 },
+      spotifyId:      { type: String, default: '' },
+      connected:      { type: Boolean, default: false },
+      shareNowPlaying:{ type: Boolean, default: true },
+    },
   },
   { timestamps: true }
 );
