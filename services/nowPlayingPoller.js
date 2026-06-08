@@ -6,12 +6,16 @@ const { getNowPlaying } = require('./spotifyAuth');
 
 const _lastTrack = new Map(); // userId → spotifyId|null|'paused'
 
+// Call this from presence socket when user comes back online
+const clearUserCache = (userId) => {
+  _lastTrack.delete(String(userId));
+};
+
 const startNowPlayingPoller = (io) => {
   const poll = async () => {
     try {
       const users = await User.find({
-        isOnline:                 true,
-        'spotify.connected':      true,
+        'spotify.connected':       true,
         'spotify.shareNowPlaying': true,
       }).select('_id');
 
@@ -47,4 +51,4 @@ const startNowPlayingPoller = (io) => {
   console.log('🎵 Spotify now-playing poller started (3s)');
 };
 
-module.exports = { startNowPlayingPoller };
+module.exports = { startNowPlayingPoller, clearUserCache };

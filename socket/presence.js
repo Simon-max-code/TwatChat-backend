@@ -27,6 +27,12 @@ module.exports = (io, socket) => {
       // Join a personal room (userId) so others can target this user
       socket.join(String(userId));
 
+      // ── Clear stale Spotify cache so poller re-emits immediately ──
+      try {
+        const { clearUserCache } = require('../services/nowPlayingPoller');
+        clearUserCache(userId);
+      } catch (_) {}
+
       // Broadcast to everyone if user allows online status
       if (user.settings?.onlineStatus !== false) {
         socket.broadcast.emit('presence:update', {

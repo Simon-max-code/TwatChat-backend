@@ -1,4 +1,4 @@
-'use strict';
+g 'use strict';
 
 const axios = require('axios');
 const User  = require('../models/user');
