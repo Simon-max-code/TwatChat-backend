@@ -95,6 +95,23 @@ const createPost = async (req, res, next) => {
   }
 };
 
+// ── @GET /api/posts/public/:id  (public, no auth) ─────────
+const getPublicPost = async (req, res, next) => {
+  try {
+    const post = await Post.findOne({
+      _id: req.params.id,
+      deleted: false,
+      visibility: 'public',
+    }).populate('author', 'displayName initials avatarClass avatarUrl');
+
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    res.json({ post: { ...post.toObject(), likeCount: post.likes.length } });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── @GET /api/posts  (protected) ──────────────────────────
 // Query: ?tab=foryou|friends&page=1&limit=10
 const getPosts = async (req, res, next) => {
@@ -240,4 +257,4 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-module.exports = { createPost, getPosts, toggleLike, deletePost };
+module.exports = { createPost, getPublicPost, getPosts, toggleLike, deletePost };

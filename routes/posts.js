@@ -5,6 +5,11 @@ const router     = express.Router();
 const { createPost, getPosts, toggleLike, deletePost } = require('../controllers/postCtrl');
 const { protect } = require('../middleware/auth');
 const upload     = require('../middleware/upload');
+const { getPublicPost } = require('../controllers/postCtrl');
+
+
+// Public — no auth, used for shared links (WhatsApp/IG/FB etc.)
+router.get('/public/:id', getPublicPost);
 
 router.use(protect);
 
